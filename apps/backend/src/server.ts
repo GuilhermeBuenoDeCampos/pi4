@@ -1,5 +1,6 @@
 import cors from 'cors'
 import express from 'express'
+import './models/index.js'
 
 const app = express()
 const port = Number(process.env.PORT ?? 3333)
