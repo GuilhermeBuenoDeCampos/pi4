@@ -8,6 +8,7 @@ CREATE TABLE usuario (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   nome VARCHAR(150) NOT NULL,
   email VARCHAR(255) NOT NULL,
+  telefone VARCHAR(20) NULL,
   senha_hash VARCHAR(255) NOT NULL,
   ativo BOOLEAN NOT NULL DEFAULT TRUE,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -23,6 +24,19 @@ CREATE TABLE empresa (
   ativa BOOLEAN NOT NULL DEFAULT TRUE,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uk_empresa_cnpj (cnpj)
+) ENGINE=InnoDB;
+
+CREATE TABLE token_senha (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  usuario_id BIGINT UNSIGNED NOT NULL,
+  token_hash CHAR(64) NOT NULL,
+  tipo ENUM('RESET','CONVITE') NOT NULL DEFAULT 'RESET',
+  expira_em DATETIME NOT NULL,
+  usado_em DATETIME NULL,
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_token_senha_hash (token_hash),
+  KEY idx_token_senha_usuario (usuario_id),
+  CONSTRAINT fk_token_senha_usuario FOREIGN KEY (usuario_id) REFERENCES usuario(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE cargo (

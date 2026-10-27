@@ -8,6 +8,7 @@ import { Pop } from './Pop.js'
 import { Progresso } from './Progresso.js'
 import { Trilha } from './Trilha.js'
 import { TrilhaMaterial } from './TrilhaMaterial.js'
+import { TokenSenha } from './TokenSenha.js'
 import { Usuario } from './Usuario.js'
 import { Video } from './Video.js'
 
@@ -38,8 +39,10 @@ Atribuicao.belongsTo(Usuario, { foreignKey: 'atribuidoPor', as: 'atribuidor' })
 Atribuicao.hasMany(Progresso, { foreignKey: 'atribuicaoId', as: 'progressos' })
 Progresso.belongsTo(Atribuicao, { foreignKey: 'atribuicaoId', as: 'atribuicao' })
 Progresso.belongsTo(TrilhaMaterial, { foreignKey: 'trilhaMaterialId', as: 'item' })
+Usuario.hasMany(TokenSenha, { foreignKey: 'usuarioId', as: 'tokensSenha' })
+TokenSenha.belongsTo(Usuario, { foreignKey: 'usuarioId', as: 'usuario' })
 
 export {
   Atribuicao, Cargo, Empresa, EmpresaUsuario, FichaTecnica, Material,
-  Pop, Progresso, Trilha, TrilhaMaterial, Usuario, Video,
+  Pop, Progresso, TokenSenha, Trilha, TrilhaMaterial, Usuario, Video,
 }

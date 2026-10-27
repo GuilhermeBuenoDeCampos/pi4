@@ -1,6 +1,15 @@
 import { useState } from 'react'
+import { AuthProvider, useAuth } from './auth/AuthContext'
+import { navigate, Redirect, usePathname } from './router'
+import { LoginPage } from './pages/LoginPage'
+import { SelectCompanyPage } from './pages/SelectCompanyPage'
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
+import { ResetPasswordPage } from './pages/ResetPasswordPage'
+import { NewCollaboratorPage } from './pages/NewCollaboratorPage'
 
-type Page = 'landing' | 'dashboard' | 'trainings' | 'progress' | 'assessments' | 'certificates' | 'notifications' | 'profile' | 'products' | 'pops'
+type Page = 'landing' | 'dashboard' | 'trainings' | 'progress' | 'assessments' | 'certificates' | 'notifications' | 'profile' | 'products' | 'pops' | 'collaborators'
+
+const managerNavItem: { id: Page; label: string; icon: string } = { id: 'collaborators', label: 'Colaboradores', icon: '☷' }
 
 const navItems: { id: Page; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Início', icon: '⌂' },
@@ -21,18 +30,29 @@ const trainings = [
   { title: 'Segurança Alimentar', area: 'Qualidade', progress: 0, status: 'Pendente' },
 ]
 
-function App() {
-  const [page, setPage] = useState<Page>('landing')
+function PlatformApp({ initialPage = 'landing' }: { initialPage?: Page }) {
+  const { user, canManage, logout } = useAuth()
+  const [page, setPage] = useState<Page>(initialPage)
   const [toast, setToast] = useState('')
-  const go = (next: Page) => setPage(next)
+  const go = (next: Page) => {
+    if (!user && next !== 'landing') {
+      navigate('/login')
+      return
+    }
+    setPage(next)
+  }
   const notify = (message: string) => {
     setToast(message)
     window.setTimeout(() => setToast(''), 2600)
   }
+  const handleLogout = async () => {
+    await logout()
+    navigate('/login', true)
+  }
 
   return (
     <div className="app-shell">
-      {page !== 'landing' && <Sidebar page={page} go={go} />}
+      {page !== 'landing' && <Sidebar page={page} go={go} canManage={canManage} onLogout={handleLogout} />}
       <main className={page === 'dashboard' ? 'main-content dashboard-content' : page === 'landing' ? 'landing-content' : 'main-content'}>
         {page === 'landing' && <Landing go={go} />}
         {page !== 'dashboard' && page !== 'landing' && <Topbar title={pageTitle(page)} />}
@@ -45,6 +65,7 @@ function App() {
         {page === 'profile' && <Profile notify={notify} />}
         {page === 'products' && <Products notify={notify} />}
         {page === 'pops' && <Pops notify={notify} />}
+        {page === 'collaborators' && <NewCollaboratorPage notify={notify} onBack={() => setPage('dashboard')} />}
       </main>
       {toast && <div className="toast">{toast}</div>}
     </div>
@@ -52,7 +73,7 @@ function App() {
 }
 
 function pageTitle(page: Page) {
-  const titles: Record<Page, string> = { landing: 'Infinity Code', dashboard: 'Dashboard do funcionário', trainings: 'Meus treinamentos', progress: 'Meu progresso', assessments: 'Avaliações', certificates: 'Certificados', notifications: 'Notificações', profile: 'Meu perfil', products: 'Fichas técnicas dos produtos', pops: 'Selecionar POP' }
+  const titles: Record<Page, string> = { landing: 'Infinity Code', dashboard: 'Dashboard do funcionário', trainings: 'Meus treinamentos', progress: 'Meu progresso', assessments: 'Avaliações', certificates: 'Certificados', notifications: 'Notificações', profile: 'Meu perfil', products: 'Fichas técnicas dos produtos', pops: 'Selecionar POP', collaborators: 'Colaboradores' }
   return titles[page]
 }
 
@@ -94,20 +115,29 @@ function Benefit({ icon, title, text }: { icon: string; title: string; text: str
   return <div className="benefit-item"><span className="benefit-icon">{icon}</span><div><h3>{title}</h3><p>{text}</p></div></div>
 }
 
-function Sidebar({ page, go }: { page: Page; go: (page: Page) => void }) {
+function Sidebar({ page, go, canManage, onLogout }: { page: Page; go: (page: Page) => void; canManage: boolean; onLogout: () => void }) {
+  const items = canManage ? [...navItems, managerNavItem] : navItems
   return <aside className="sidebar">
     <div className="brand">INFINITY<br /><span>CODE</span></div>
-    <nav>{navItems.map(item => <button key={item.id} className={page === item.id ? 'nav-item active' : 'nav-item'} onClick={() => go(item.id)}><span className="nav-icon">{item.icon}</span>{item.label}</button>)}</nav>
-    <button className="nav-item logout" onClick={() => go('dashboard')}><span className="nav-icon">↪</span>Sair</button>
+    <nav>{items.map(item => <button key={item.id} className={page === item.id ? 'nav-item active' : 'nav-item'} onClick={() => go(item.id)}><span className="nav-icon">{item.icon}</span>{item.label}</button>)}</nav>
+    <button className="nav-item logout" onClick={onLogout}><span className="nav-icon">↪</span>Sair</button>
   </aside>
 }
 
+function initials(name: string) {
+  return name.split(' ').filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase()
+}
+
 function Topbar({ title, subtitle }: { title: string; subtitle?: string }) {
-  return <header className="topbar"><div><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div><div className="user-chip"><span className="avatar">JS</span><strong>João da Silva</strong><span className="chevron">⌄</span></div></header>
+  const { user } = useAuth()
+  const userName = user?.nome ?? 'João da Silva'
+  return <header className="topbar"><div><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div><div className="user-chip"><span className="avatar">{initials(userName)}</span><strong>{userName}</strong><span className="chevron">⌄</span></div></header>
 }
 
 function Dashboard({ go }: { go: (page: Page) => void }) {
-  return <div className="dashboard-wrap"><Topbar title="Dashboard do funcionário" /><section className="hero"><div><p className="eyebrow">Bom dia, João</p><h2>Continue evoluindo<br /><em>com propósito.</em></h2><p>Você está a um passo de concluir seus próximos treinamentos.</p><button className="primary" onClick={() => go('trainings')}>Ver meus treinamentos <span>→</span></button></div><div className="hero-art"><div className="ring">68<small>%</small></div><span>progresso geral</span></div></section><div className="metric-grid"><Metric label="Treinamentos em andamento" value="02" caption="Continue de onde parou" icon="▣" /><Metric label="Treinamentos concluídos" value="04" caption="+1 este mês" icon="✓" /><Metric label="Taxa de aprovação" value="86%" caption="Excelente desempenho" icon="↗" /><Metric label="Próxima avaliação" value="22 mai" caption="Boas práticas na cozinha" icon="◷" /></div><section className="panel recent"><div className="section-heading"><div><p className="eyebrow">Sua jornada</p><h3>Últimos treinamentos</h3></div><button className="text-button" onClick={() => go('trainings')}>Ver todos →</button></div><TrainingTable compact /></section></div>
+  const { user } = useAuth()
+  const firstName = user?.nome.split(' ')[0] ?? 'João'
+  return <div className="dashboard-wrap"><Topbar title="Dashboard do funcionário" /><section className="hero"><div><p className="eyebrow">Bom dia, {firstName}</p><h2>Continue evoluindo<br /><em>com propósito.</em></h2><p>Você está a um passo de concluir seus próximos treinamentos.</p><button className="primary" onClick={() => go('trainings')}>Ver meus treinamentos <span>→</span></button></div><div className="hero-art"><div className="ring">68<small>%</small></div><span>progresso geral</span></div></section><div className="metric-grid"><Metric label="Treinamentos em andamento" value="02" caption="Continue de onde parou" icon="▣" /><Metric label="Treinamentos concluídos" value="04" caption="+1 este mês" icon="✓" /><Metric label="Taxa de aprovação" value="86%" caption="Excelente desempenho" icon="↗" /><Metric label="Próxima avaliação" value="22 mai" caption="Boas práticas na cozinha" icon="◷" /></div><section className="panel recent"><div className="section-heading"><div><p className="eyebrow">Sua jornada</p><h3>Últimos treinamentos</h3></div><button className="text-button" onClick={() => go('trainings')}>Ver todos →</button></div><TrainingTable compact /></section></div>
 }
 
 function Metric({ label, value, caption, icon }: { label: string; value: string; caption: string; icon: string }) {
@@ -145,5 +175,45 @@ function Products({ notify }: { notify: (message: string) => void }) { return <L
 function Pops({ notify }: { notify: (message: string) => void }) { return <ListPage eyebrow="Procedimentos operacionais" title="Selecionar POP" description="Escolha um procedimento para consultar."><div className="pop-list">{[['Higienização de Utensílios', 'Limpeza e desinfecção dos utensílios', '15 minutos', 'Concluído'], ['Higienização das Mãos', 'Lavagem correta antes e durante a produção', '5 minutos', 'Pendente'], ['Organização da Bancada', 'Preparação e organização do posto de trabalho', '10 minutos', 'Em andamento'], ['Armazenamento de Ingredientes', 'Identificação, validade e conservação dos produtos', '20 minutos', 'Pendente']].map(item => <article className="pop-card" key={item[0]}><div className="product-image">✧</div><div className="product-name"><strong>{item[0]}</strong><small>{item[1]}</small></div><div><small>Responsável</small><strong>Auxiliar de cozinha</strong></div><div><small>Tempo estimado</small><strong>{item[2]}</strong></div><Status value={item[3]} /><button className="small-button ghost" onClick={() => notify(`POP ${item[0]} aberto`)}>Abrir POP</button></article>)}</div></ListPage> }
 
 function ListPage({ eyebrow, title, description, tabs, children }: { eyebrow: string; title: string; description: string; tabs?: string[]; children: React.ReactNode }) { return <><div className="page-intro"><div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>{description}</p></div></div>{tabs && <div className="tabs">{tabs.map((tab, index) => <button className={index === 0 ? 'tab active' : 'tab'} key={tab}>{tab}</button>)}</div>}{children}</> }
+
+function Splash() {
+  return <div className="auth-splash"><div className="brand">INFINITY<br /><span>CODE</span></div><p>Carregando sua sessão...</p></div>
+}
+
+function AppRouter() {
+  const pathname = usePathname()
+  const { user, companies, activeCompany, loading, canManage } = useAuth()
+
+  if (loading) return <Splash />
+
+  if (pathname === '/login') {
+    if (user) return <Redirect to={activeCompany ? '/dashboard' : '/select-company'} />
+    return <LoginPage />
+  }
+
+  if (pathname === '/forgot-password') return <ForgotPasswordPage />
+  if (pathname === '/reset-password') return <ResetPasswordPage />
+
+  if (pathname === '/select-company') {
+    if (!user) return <Redirect to="/login" />
+    return <SelectCompanyPage />
+  }
+
+  if (pathname === '/') return <PlatformApp initialPage="landing" />
+
+  if (!user) return <Redirect to="/login" />
+  if (!activeCompany && companies.length > 1) return <Redirect to="/select-company" />
+
+  if (pathname === '/admin/collaborators/new') {
+    if (!canManage) return <Redirect to="/dashboard" />
+    return <PlatformApp key={pathname} initialPage="collaborators" />
+  }
+
+  return <PlatformApp key={pathname} initialPage="dashboard" />
+}
+
+function App() {
+  return <AuthProvider><AppRouter /></AuthProvider>
+}
 
 export default App
