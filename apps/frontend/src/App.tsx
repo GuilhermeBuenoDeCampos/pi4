@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-type Page = 'dashboard' | 'trainings' | 'progress' | 'assessments' | 'certificates' | 'notifications' | 'profile' | 'products' | 'pops'
+type Page = 'landing' | 'dashboard' | 'trainings' | 'progress' | 'assessments' | 'certificates' | 'notifications' | 'profile' | 'products' | 'pops'
 
 const navItems: { id: Page; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Início', icon: '⌂' },
@@ -22,7 +22,7 @@ const trainings = [
 ]
 
 function App() {
-  const [page, setPage] = useState<Page>('dashboard')
+  const [page, setPage] = useState<Page>('landing')
   const [toast, setToast] = useState('')
   const go = (next: Page) => setPage(next)
   const notify = (message: string) => {
@@ -32,9 +32,10 @@ function App() {
 
   return (
     <div className="app-shell">
-      {page !== 'dashboard' && <Sidebar page={page} go={go} />}
-      <main className={page === 'dashboard' ? 'main-content dashboard-content' : 'main-content'}>
-        {page !== 'dashboard' && <Topbar title={pageTitle(page)} />}
+      {page !== 'landing' && <Sidebar page={page} go={go} />}
+      <main className={page === 'dashboard' ? 'main-content dashboard-content' : page === 'landing' ? 'landing-content' : 'main-content'}>
+        {page === 'landing' && <Landing go={go} />}
+        {page !== 'dashboard' && page !== 'landing' && <Topbar title={pageTitle(page)} />}
         {page === 'dashboard' && <Dashboard go={go} />}
         {page === 'trainings' && <Trainings go={go} notify={notify} />}
         {page === 'progress' && <Progress />}
@@ -51,8 +52,46 @@ function App() {
 }
 
 function pageTitle(page: Page) {
-  const titles: Record<Page, string> = { dashboard: 'Dashboard do funcionário', trainings: 'Meus treinamentos', progress: 'Meu progresso', assessments: 'Avaliações', certificates: 'Certificados', notifications: 'Notificações', profile: 'Meu perfil', products: 'Fichas técnicas dos produtos', pops: 'Selecionar POP' }
+  const titles: Record<Page, string> = { landing: 'Infinity Code', dashboard: 'Dashboard do funcionário', trainings: 'Meus treinamentos', progress: 'Meu progresso', assessments: 'Avaliações', certificates: 'Certificados', notifications: 'Notificações', profile: 'Meu perfil', products: 'Fichas técnicas dos produtos', pops: 'Selecionar POP' }
   return titles[page]
+}
+
+function Landing({ go }: { go: (page: Page) => void }) {
+  return <div className="landing-page">
+    <header className="landing-nav">
+      <div className="brand landing-brand">INFINITY<br /><span>CODE</span></div>
+      <nav><a href="#solucao">A solução</a><a href="#recursos">Recursos</a><a href="#beneficios">Benefícios</a></nav>
+      <button className="landing-login" onClick={() => go('dashboard')}>Acessar plataforma <span>→</span></button>
+    </header>
+    <section className="landing-hero">
+      <div className="landing-hero-copy">
+        <p className="eyebrow">Desenvolvimento que transforma</p>
+        <h1>Conhecimento para fazer <em>melhor.</em></h1>
+        <p className="landing-lead">Uma plataforma completa para capacitar equipes, padronizar processos e transformar conhecimento em excelência operacional.</p>
+        <div className="landing-actions"><button className="primary landing-primary" onClick={() => go('dashboard')}>Conheça a plataforma <span>→</span></button><a href="#recursos" className="play-link"><span>▷</span> Explorar recursos</a></div>
+        <div className="landing-proof"><div className="proof-avatars"><span>JS</span><span>MA</span><span>RC</span><b>+</b></div><p><strong>Mais de 500 profissionais</strong><br />aprendendo todos os dias</p></div>
+      </div>
+      <div className="landing-visual">
+        <div className="visual-orbit orbit-one" /><div className="visual-orbit orbit-two" />
+        <div className="visual-card visual-main-card"><div className="visual-card-top"><span>Seu progresso</span><b>⋮</b></div><div className="visual-progress"><div className="visual-ring"><strong>68<small>%</small></strong></div><div><strong>Você está evoluindo!</strong><p>4 de 6 treinamentos concluídos</p></div></div><div className="mini-bars"><span style={{ width: '85%' }} /><span style={{ width: '62%' }} /><span style={{ width: '46%' }} /></div></div>
+        <div className="floating-card training-float"><span className="float-icon">✓</span><div><strong>Treinamento concluído</strong><small>Boas práticas na cozinha</small></div></div>
+        <div className="floating-card pop-float"><span className="float-icon">✦</span><div><strong>POP atualizado</strong><small>Higienização de utensílios</small></div></div>
+      </div>
+    </section>
+    <section className="landing-logos"><span>Feito para equipes que buscam</span><strong>PADRÃO</strong><strong>QUALIDADE</strong><strong>EVOLUÇÃO</strong><strong>RESULTADO</strong></section>
+    <section className="landing-section" id="solucao"><div className="landing-section-heading"><p className="eyebrow">Tudo em um só lugar</p><h2>O próximo nível da sua equipe<br /><em>começa aqui.</em></h2><p>Centralize o desenvolvimento das pessoas e a operação do negócio em uma experiência simples, visual e feita para a rotina.</p></div><div className="feature-grid" id="recursos"><FeatureCard icon="◇" number="01" title="Treinamentos" text="Trilhas de aprendizagem para desenvolver habilidades e acompanhar a evolução de cada profissional." action={() => go('trainings')} /><FeatureCard icon="▤" number="02" title="Fichas técnicas" text="Receitas, rendimentos e padrões sempre acessíveis para garantir consistência em cada preparo." action={() => go('products')} /><FeatureCard icon="⚙" number="03" title="POPs" text="Procedimentos claros e atualizados para orientar a equipe e manter a excelência operacional." action={() => go('pops')} /></div></section>
+    <section className="landing-benefits" id="beneficios"><div><p className="eyebrow">Resultados que aparecem na prática</p><h2>Mais clareza para quem<br /><em>ensina e para quem faz.</em></h2><p>Com a Infinity Code, sua equipe sabe o que fazer, como fazer e por que cada detalhe importa.</p><button className="landing-text-button" onClick={() => go('dashboard')}>Ver a plataforma em ação <span>→</span></button></div><div className="benefit-list"><Benefit icon="↗" title="Acompanhe a evolução" text="Indicadores claros para identificar avanços e oportunidades." /><Benefit icon="♧" title="Padronize a operação" text="Conhecimento acessível para entregar o mesmo padrão sempre." /><Benefit icon="♡" title="Engaje sua equipe" text="Uma jornada simples que valoriza cada conquista." /></div></section>
+    <section className="landing-cta"><p className="eyebrow">Pronto para começar?</p><h2>Conhecimento que vira<br /><em>resultado.</em></h2><p>Leve mais confiança, padrão e evolução para a rotina da sua equipe.</p><button className="primary landing-primary" onClick={() => go('dashboard')}>Acessar a plataforma <span>→</span></button></section>
+    <footer className="landing-footer"><div className="brand">INFINITY<br /><span>CODE</span></div><span>Desenvolvimento que transforma.</span><span>© 2025 Infinity Code</span></footer>
+  </div>
+}
+
+function FeatureCard({ icon, number, title, text, action }: { icon: string; number: string; title: string; text: string; action: () => void }) {
+  return <article className="feature-card"><div className="feature-card-top"><span className="feature-icon">{icon}</span><small>{number}</small></div><h3>{title}</h3><p>{text}</p><button onClick={action}>Saiba mais <span>→</span></button></article>
+}
+
+function Benefit({ icon, title, text }: { icon: string; title: string; text: string }) {
+  return <div className="benefit-item"><span className="benefit-icon">{icon}</span><div><h3>{title}</h3><p>{text}</p></div></div>
 }
 
 function Sidebar({ page, go }: { page: Page; go: (page: Page) => void }) {
