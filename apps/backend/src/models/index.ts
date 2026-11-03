@@ -3,6 +3,7 @@ import { Cargo } from './Cargo.js'
 import { Empresa } from './Empresa.js'
 import { EmpresaUsuario } from './EmpresaUsuario.js'
 import { FichaTecnica } from './FichaTecnica.js'
+import { HistoricoVisualizacao } from './HistoricoVisualizacao.js'
 import { Material } from './Material.js'
 import { Pop } from './Pop.js'
 import { Progresso } from './Progresso.js'
@@ -30,6 +31,9 @@ Material.hasOne(FichaTecnica, { foreignKey: 'materialId', as: 'fichaTecnica', on
 FichaTecnica.belongsTo(Material, { foreignKey: 'materialId', as: 'material' })
 Trilha.belongsToMany(Material, { through: TrilhaMaterial, foreignKey: 'trilhaId', otherKey: 'materialId', as: 'materiais' })
 Material.belongsToMany(Trilha, { through: TrilhaMaterial, foreignKey: 'materialId', otherKey: 'trilhaId', as: 'trilhas' })
+HistoricoVisualizacao.belongsTo(Material, { foreignKey: 'materialId', as: 'material' })
+HistoricoVisualizacao.belongsTo(Usuario, { foreignKey: 'usuarioId', as: 'usuario' })
+HistoricoVisualizacao.belongsTo(Empresa, { foreignKey: 'empresaId', as: 'empresa' })
 TrilhaMaterial.belongsTo(Trilha, { foreignKey: 'trilhaId', as: 'trilha' })
 TrilhaMaterial.belongsTo(Material, { foreignKey: 'materialId', as: 'material' })
 EmpresaUsuario.hasMany(Atribuicao, { foreignKey: 'empresaUsuarioId', as: 'atribuicoes' })
@@ -43,6 +47,6 @@ Usuario.hasMany(TokenSenha, { foreignKey: 'usuarioId', as: 'tokensSenha' })
 TokenSenha.belongsTo(Usuario, { foreignKey: 'usuarioId', as: 'usuario' })
 
 export {
-  Atribuicao, Cargo, Empresa, EmpresaUsuario, FichaTecnica, Material,
+  Atribuicao, Cargo, Empresa, EmpresaUsuario, FichaTecnica, HistoricoVisualizacao, Material,
   Pop, Progresso, TokenSenha, Trilha, TrilhaMaterial, Usuario, Video,
 }

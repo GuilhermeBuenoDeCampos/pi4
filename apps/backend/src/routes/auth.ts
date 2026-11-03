@@ -8,6 +8,7 @@ import { buildPasswordLink, createOneTimeToken, hashToken } from '../services/to
 import { resetEmailHtml, sendMail } from '../services/mailer.js'
 import { env } from '../config/env.js'
 import { asyncHandler } from '../utils/async-handler.js'
+import { sequelize } from '../database/sequelize.js'
 
 const router = Router()
 
@@ -47,6 +48,7 @@ function usuarioPublico(usuario: Usuario) {
     nome: usuario.nome,
     email: usuario.email,
     telefone: usuario.telefone,
+    fotoUrl: usuario.fotoUrl,
   }
 }
 
@@ -88,6 +90,78 @@ router.post('/login', asyncHandler(async (request, response) => {
   })
 }))
 
+router.post('/register-company', asyncHandler(async (request, response) => {
+  const nome = String(request.body?.nome ?? '').trim()
+  const email = normalizeEmail(request.body?.email)
+  const telefone = String(request.body?.telefone ?? '').trim()
+  const senha = String(request.body?.senha ?? '')
+  const razaoSocial = String(request.body?.razaoSocial ?? '').trim()
+  const nomeFantasia = String(request.body?.nomeFantasia ?? '').trim()
+  const cnpj = String(request.body?.cnpj ?? '').replace(/\D/g, '')
+
+  if (!nome || !email || !senha || !razaoSocial || !nomeFantasia) {
+    response.status(400).json({ message: 'Preencha todos os campos obrigatórios.' })
+    return
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    response.status(400).json({ message: 'Informe um e-mail válido.' })
+    return
+  }
+  if (senha.length < 8) {
+    response.status(400).json({ message: 'A senha deve ter no mínimo 8 caracteres.' })
+    return
+  }
+  if (cnpj && cnpj.length !== 14) {
+    response.status(400).json({ message: 'Informe um CNPJ válido com 14 dígitos.' })
+    return
+  }
+
+  const existingUser = await Usuario.findOne({ where: { email } })
+  if (existingUser) {
+    response.status(409).json({ message: 'Já existe um usuário cadastrado com este e-mail.' })
+    return
+  }
+  if (cnpj && await Empresa.findOne({ where: { cnpj } })) {
+    response.status(409).json({ message: 'Já existe uma empresa cadastrada com este CNPJ.' })
+    return
+  }
+
+  const transaction = await sequelize.transaction()
+  try {
+    const senhaHash = await bcrypt.hash(senha, 10)
+    const empresa = await Empresa.create({
+      razaoSocial,
+      nomeFantasia,
+      cnpj: cnpj || null,
+      ativa: true,
+    }, { transaction })
+    const usuario = await Usuario.create({
+      nome,
+      email,
+      telefone: telefone || null,
+      senhaHash,
+      ativo: true,
+    }, { transaction })
+    await EmpresaUsuario.create({
+      empresaId: empresa.id,
+      usuarioId: usuario.id,
+      cargoId: null,
+      papel: 'ADMIN',
+      status: 'ATIVO',
+      dataEntrada: new Date(),
+    }, { transaction })
+    await transaction.commit()
+    response.status(201).json({
+      message: 'Empresa cadastrada com sucesso. Agora você já pode entrar.',
+      company: { id: String(empresa.id), razaoSocial: empresa.razaoSocial, nomeFantasia: empresa.nomeFantasia },
+      user: { id: String(usuario.id), nome: usuario.nome, email: usuario.email },
+    })
+  } catch (error) {
+    await transaction.rollback()
+    throw error
+  }
+}))
+
 router.post('/select-company', requireAuth, asyncHandler(async (request, response) => {
   const empresaId = String(request.body?.empresaId ?? '')
   if (!/^\d+$/.test(empresaId)) {
@@ -125,6 +199,37 @@ router.post('/select-company', requireAuth, asyncHandler(async (request, respons
     refreshToken: signRefreshToken(payload),
     activeCompany: serializarEmpresa(vinculo),
   })
+}))
+
+router.put('/me', requireAuth, asyncHandler(async (request, response) => {
+  const nome = String(request.body?.nome ?? '').trim()
+  const telefone = String(request.body?.telefone ?? '').trim()
+  const fotoUrl = request.body?.fotoUrl === null ? null : String(request.body?.fotoUrl ?? '')
+
+  if (!nome) {
+    response.status(400).json({ message: 'Informe seu nome.' })
+    return
+  }
+  if (telefone && telefone.replace(/\D/g, '').length < 10) {
+    response.status(400).json({ message: 'Informe um telefone válido com DDD.' })
+    return
+  }
+  if (fotoUrl && (!fotoUrl.startsWith('data:image/') || fotoUrl.length > 2_500_000)) {
+    response.status(400).json({ message: 'A foto deve ser uma imagem de até 2 MB.' })
+    return
+  }
+
+  const usuario = await Usuario.findByPk(request.auth!.sub)
+  if (!usuario || !usuario.ativo) {
+    response.status(404).json({ message: 'Usuário não encontrado.' })
+    return
+  }
+
+  usuario.nome = nome
+  usuario.telefone = telefone || null
+  if (request.body?.fotoUrl !== undefined) usuario.fotoUrl = fotoUrl || null
+  await usuario.save()
+  response.json({ user: usuarioPublico(usuario), message: 'Perfil atualizado com sucesso.' })
 }))
 
 router.get('/me', requireAuth, asyncHandler(async (request, response) => {

@@ -5,9 +5,10 @@ type AuthShellProps = {
   title: ReactNode
   description: string
   children: ReactNode
+  cardClassName?: string
 }
 
-export function AuthShell({ eyebrow, title, description, children }: AuthShellProps) {
+export function AuthShell({ eyebrow, title, description, children, cardClassName }: AuthShellProps) {
   return (
     <div className="auth-page">
       <aside className="auth-aside">
@@ -30,7 +31,7 @@ export function AuthShell({ eyebrow, title, description, children }: AuthShellPr
           <span>Desenvolvimento que transforma</span>
         </div>
 
-        <section className="auth-card">
+        <section className={cardClassName ? `auth-card ${cardClassName}` : 'auth-card'}>
           <div className="auth-card-heading">
             <p className="eyebrow">{eyebrow}</p>
             <h2>{title}</h2>

@@ -4,12 +4,14 @@ import express from 'express'
 import './models/index.js'
 import authRoutes from './routes/auth.js'
 import collaboratorRoutes from './routes/collaborators.js'
+import materialRoutes from './routes/materials.js'
+import historyRoutes from './routes/history.js'
 import { env } from './config/env.js'
 
 const app = express()
 
 app.use(cors())
-app.use(express.json())
+app.use(express.json({ limit: '3mb' }))
 
 app.get('/api/health', (_request, response) => {
   response.json({ status: 'ok', service: 'infinity-code-api' })
@@ -24,6 +26,8 @@ app.get('/api/dashboard', (_request, response) => {
 
 app.use('/api/auth', authRoutes)
 app.use('/api/admin/collaborators', collaboratorRoutes)
+app.use('/api/materials', materialRoutes)
+app.use('/api/history', historyRoutes)
 
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
   console.error(error)
