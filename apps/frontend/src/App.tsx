@@ -27,7 +27,7 @@ const navItems: { id: Page; label: string; icon: string }[] = [
   { id: 'history', label: 'Histórico de visualizações', icon: '◷' },
 ]
 
-type CourseVideo = { materialId?: string; title: string; duration: string; youtubeId: string; transcript?: string }
+type CourseVideo = { materialId?: string; videoIndex?: number; title: string; duration: string; youtubeId: string; transcript?: string }
 type CoursePop = { title: string; description: string }
 type CourseFicha = { title: string; category: string }
 
@@ -523,7 +523,7 @@ function KnowledgeRecorder({ trainingId, video }: { trainingId: string; video: C
       setEvaluating(true)
       setError('')
       try {
-        const response = await api.post<{ evaluation: TrainingEvaluation }>(`/api/trainings/${trainingId}/evaluate`, { materialId: video.materialId, youtubeId: video.youtubeId, videoTitle: video.title, transcript })
+        const response = await api.post<{ evaluation: TrainingEvaluation }>(`/api/trainings/${trainingId}/evaluate`, { materialId: video.materialId, videoIndex: video.videoIndex, youtubeId: video.youtubeId, videoTitle: video.title, transcript })
         setEvaluation(response.evaluation)
       } catch (evaluationError) {
         setError(evaluationError instanceof ApiError ? evaluationError.message : 'Não foi possível avaliar sua resposta.')
@@ -594,7 +594,7 @@ function CourseDetail({ course, go, notify, canEdit, onUpdate, onBack }: { cours
           <div className="course-video-actions">
             <button className="secondary" onClick={() => notify(`Aula "${currentVideo.title}" marcada como concluída`)}>Marcar como concluída</button>
           </div>
-          <KnowledgeRecorder key={currentVideo.youtubeId} trainingId={course.id} video={currentVideo} />
+          <KnowledgeRecorder key={`${currentVideo.youtubeId}-${activeVideo}`} trainingId={course.id} video={{ ...currentVideo, videoIndex: activeVideo }} />
         </section>
         <section className="panel course-lessons">
           <div className="section-heading"><div><p className="eyebrow">Conteúdo do curso</p><h3>Aulas em vídeo</h3></div></div>

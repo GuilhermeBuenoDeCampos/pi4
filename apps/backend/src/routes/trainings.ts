@@ -29,10 +29,11 @@ function serializeTraining(training: Trilha) {
     description: training.descricao ?? '',
     instructor: training.instrutor ?? '',
     duration: training.duracao ?? '',
-    videos: materials.map(material => {
+    videos: materials.map((material, index) => {
       const video = getVideo(material)
       return {
         materialId: String(material.id),
+        videoIndex: index,
         title: material.titulo,
         duration: video?.duracaoSegundos ? `${Math.floor(video.duracaoSegundos / 60)}:${String(video.duracaoSegundos % 60).padStart(2, '0')}` : '',
         youtubeId: youtubeId(video?.url),
@@ -134,6 +135,7 @@ router.post('/', requireAuth, requireCompany, requireRole([...creatorRoles]), as
 router.post('/:id/evaluate', requireAuth, requireCompany, asyncHandler(async (request, response) => {
   const id = typeof request.params.id === 'string' ? request.params.id : ''
   const requestedMaterialId = String(request.body?.materialId ?? '').trim()
+  const requestedVideoIndex = Number(request.body?.videoIndex)
   const requestedYoutubeId = youtubeId(request.body?.youtubeId)
   const requestedVideoTitle = String(request.body?.videoTitle ?? '').trim().toLocaleLowerCase()
   const collaboratorTranscript = String(request.body?.transcript ?? '').trim()
@@ -155,7 +157,9 @@ router.post('/:id/evaluate', requireAuth, requireCompany, asyncHandler(async (re
     }],
   })
   const materials = (training?.get('materiais') as (Material & { Video?: Video | null })[] | undefined) ?? []
-  const material = materials.find(item => {
+  const material = (Number.isInteger(requestedVideoIndex) && requestedVideoIndex >= 0
+    ? materials[requestedVideoIndex]
+    : undefined) ?? materials.find(item => {
     const video = getVideo(item)
     return (requestedMaterialId !== '' && String(item.id) === requestedMaterialId)
       || youtubeId(video?.url) === requestedYoutubeId
