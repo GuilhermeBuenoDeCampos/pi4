@@ -27,7 +27,7 @@ const navItems: { id: Page; label: string; icon: string }[] = [
   { id: 'history', label: 'Histórico de visualizações', icon: '◷' },
 ]
 
-type CourseVideo = { title: string; duration: string; youtubeId: string }
+type CourseVideo = { title: string; duration: string; youtubeId: string; transcript?: string }
 type CoursePop = { title: string; description: string }
 type CourseFicha = { title: string; category: string }
 
@@ -43,6 +43,11 @@ type Course = {
   videos: CourseVideo[]
   pops: CoursePop[]
   fichas: CourseFicha[]
+}
+
+async function saveTraining(training: Course) {
+  const response = await api.put<{ training: Course }>(`/api/trainings/${training.id}`, training)
+  return response.training
 }
 
 const trainings: Course[] = [
@@ -146,11 +151,13 @@ const trainings: Course[] = [
 ]
 
 function PlatformApp({ initialPage = 'landing' }: { initialPage?: Page }) {
-  const { user, canManage, logout } = useAuth()
+  const { user, activeCompany, canManage, logout } = useAuth()
+  const [courses, setCourses] = useState(trainings)
   const [page, setPage] = useState<Page>(initialPage)
   const [courseId, setCourseId] = useState<string | null>(null)
   const [toast, setToast] = useState('')
-  const selectedCourse = trainings.find(course => course.id === courseId) ?? null
+  const selectedCourse = courses.find(course => course.id === courseId) ?? null
+  const canEditTrainings = activeCompany?.papel === 'ADMIN' || activeCompany?.papel === 'GESTOR' || activeCompany?.papel === 'INSTRUTOR'
   const openCourse = (id: string) => {
     setCourseId(id)
     setPage('course')
@@ -177,9 +184,9 @@ function PlatformApp({ initialPage = 'landing' }: { initialPage?: Page }) {
       <main className={page === 'dashboard' ? 'main-content dashboard-content' : page === 'landing' ? 'landing-content' : 'main-content'}>
         {page === 'landing' && <Landing go={go} />}
         {page !== 'dashboard' && page !== 'landing' && <Topbar title={pageTitle(page, selectedCourse?.title)} />}
-        {page === 'dashboard' && <Dashboard go={go} openCourse={openCourse} />}
-        {page === 'trainings' && <Trainings go={go} notify={notify} openCourse={openCourse} />}
-        {page === 'course' && selectedCourse && <CourseDetail course={selectedCourse} go={go} notify={notify} onBack={() => setPage('trainings')} />}
+        {page === 'dashboard' && <Dashboard go={go} openCourse={openCourse} courses={courses} />}
+        {page === 'trainings' && <Trainings go={go} notify={notify} openCourse={openCourse} courses={courses} setCourses={setCourses} canCreate={canEditTrainings} canEdit={canEditTrainings} />}
+        {page === 'course' && selectedCourse && <CourseDetail course={selectedCourse} go={go} notify={notify} canEdit={canEditTrainings} onUpdate={async updated => { const saved = await saveTraining(updated); setCourses(current => current.map(item => item.id === saved.id ? saved : item)); notify('Treinamento atualizado com sucesso.') }} onBack={() => setPage('trainings')} />}
         {page === 'progress' && <Progress />}
         {page === 'assessments' && <Assessments notify={notify} />}
         {page === 'certificates' && <Certificates notify={notify} />}
@@ -260,31 +267,284 @@ function Topbar({ title, subtitle }: { title: string; subtitle?: string }) {
   return <header className="topbar"><div><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div><div className="user-chip">{user?.fotoUrl ? <img className="avatar avatar-image" src={user.fotoUrl} alt="" /> : <span className="avatar">{initials(userName)}</span>}<strong>{userName}</strong><span className="chevron">⌄</span></div></header>
 }
 
-function Dashboard({ go, openCourse }: { go: (page: Page) => void; openCourse: (id: string) => void }) {
+function Dashboard({ go, openCourse, courses }: { go: (page: Page) => void; openCourse: (id: string) => void; courses: Course[] }) {
   const { user } = useAuth()
   const firstName = user?.nome.split(' ')[0] ?? 'João'
-  return <div className="dashboard-wrap"><Topbar title="Dashboard do funcionário" /><section className="hero"><div><p className="eyebrow">Bom dia, {firstName}</p><h2>Continue evoluindo<br /><em>com propósito.</em></h2><p>Você está a um passo de concluir seus próximos treinamentos.</p><button className="primary" onClick={() => go('trainings')}>Ver meus treinamentos <span>→</span></button></div><div className="hero-art"><div className="ring">68<small>%</small></div><span>progresso geral</span></div></section><div className="metric-grid"><Metric label="Treinamentos em andamento" value="02" caption="Continue de onde parou" icon="▣" /><Metric label="Treinamentos concluídos" value="04" caption="+1 este mês" icon="✓" /><Metric label="Taxa de aprovação" value="86%" caption="Excelente desempenho" icon="↗" /><Metric label="Próxima avaliação" value="22 mai" caption="Boas práticas na cozinha" icon="◷" /></div><section className="panel recent"><div className="section-heading"><div><p className="eyebrow">Sua jornada</p><h3>Últimos treinamentos</h3></div><button className="text-button" onClick={() => go('trainings')}>Ver todos →</button></div><TrainingTable compact onOpen={openCourse} /></section></div>
+  return <div className="dashboard-wrap"><Topbar title="Dashboard do funcionário" /><section className="hero"><div><p className="eyebrow">Bom dia, {firstName}</p><h2>Continue evoluindo<br /><em>com propósito.</em></h2><p>Você está a um passo de concluir seus próximos treinamentos.</p><button className="primary" onClick={() => go('trainings')}>Ver meus treinamentos <span>→</span></button></div><div className="hero-art"><div className="ring">68<small>%</small></div><span>progresso geral</span></div></section><div className="metric-grid"><Metric label="Treinamentos em andamento" value="02" caption="Continue de onde parou" icon="▣" /><Metric label="Treinamentos concluídos" value="04" caption="+1 este mês" icon="✓" /><Metric label="Taxa de aprovação" value="86%" caption="Excelente desempenho" icon="↗" /><Metric label="Próxima avaliação" value="22 mai" caption="Boas práticas na cozinha" icon="◷" /></div><section className="panel recent"><div className="section-heading"><div><p className="eyebrow">Sua jornada</p><h3>Últimos treinamentos</h3></div><button className="text-button" onClick={() => go('trainings')}>Ver todos →</button></div><TrainingTable compact data={courses} onOpen={openCourse} /></section></div>
 }
 
 function Metric({ label, value, caption, icon }: { label: string; value: string; caption: string; icon: string }) {
   return <article className="metric-card"><span className="metric-icon">{icon}</span><p>{label}</p><strong>{value}</strong><small>{caption}</small></article>
 }
 
-function Trainings({ go, notify, openCourse }: { go: (page: Page) => void; notify: (message: string) => void; openCourse: (id: string) => void }) {
+function Trainings({ go, notify, openCourse, courses, setCourses, canCreate, canEdit }: { go: (page: Page) => void; notify: (message: string) => void; openCourse: (id: string) => void; courses: Course[]; setCourses: React.Dispatch<React.SetStateAction<Course[]>>; canCreate: boolean; canEdit: boolean }) {
   const [filter, setFilter] = useState('Todos')
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [newTraining, setNewTraining] = useState({ title: '', area: '', description: '', instructor: '', duration: '' })
+  const [editingCourse, setEditingCourse] = useState<Course | null>(null)
   const filters = ['Todos', 'Em andamento', 'Concluídos', 'Pendentes', 'Reprovados']
-  const visible = filter === 'Todos' ? trainings : trainings.filter(item => item.status === filter.replace('Concluídos', 'Concluído').replace('Pendentes', 'Pendente'))
-  return <><div className="page-intro"><div><p className="eyebrow">Sua trilha de desenvolvimento</p><h2>Meus treinamentos</h2><p>Acompanhe seu progresso e continue aprendendo.</p></div><button className="secondary" onClick={() => notify('Filtros avançados em breve')}>Filtrar resultados</button></div><div className="tabs">{filters.map(item => <button className={filter === item ? 'tab active' : 'tab'} key={item} onClick={() => setFilter(item)}>{item}</button>)}</div><section className="panel"><TrainingTable data={visible} go={go} notify={notify} onOpen={openCourse} /></section></>
+  const visible = filter === 'Todos' ? courses : courses.filter(item => item.status === filter.replace('Concluídos', 'Concluído').replace('Pendentes', 'Pendente'))
+  useEffect(() => {
+    let active = true
+    api.get<Course[]>('/api/trainings').then(data => {
+      if (active && data.length) setCourses(data)
+    }).catch(() => {
+      if (active) notify('Não foi possível carregar os treinamentos salvos.')
+    })
+    return () => { active = false }
+  }, [setCourses])
+  function updateNewTraining(key: keyof typeof newTraining, value: string) {
+    setNewTraining(current => ({ ...current, [key]: value }))
+  }
+  async function createTraining(event: React.FormEvent) {
+    event.preventDefault()
+    if (!newTraining.title.trim() || !newTraining.area.trim() || !newTraining.description.trim() || !newTraining.instructor.trim() || !newTraining.duration.trim()) {
+      notify('Preencha todos os campos para criar o treinamento.')
+      return
+    }
+    try {
+      const response = await api.post<{ training: Course }>('/api/trainings', {
+        title: newTraining.title,
+        area: newTraining.area,
+        description: newTraining.description,
+        instructor: newTraining.instructor,
+        duration: newTraining.duration,
+        videos: [],
+      })
+      setCourses(current => [response.training, ...current.filter(item => item.id !== response.training.id)])
+      setNewTraining({ title: '', area: '', description: '', instructor: '', duration: '' })
+      setShowCreateForm(false)
+      notify('Treinamento criado com sucesso.')
+    } catch (error) {
+      notify(error instanceof ApiError ? error.message : 'Não foi possível salvar o treinamento.')
+    }
+  }
+  async function updateCourse(updated: Course) {
+    try {
+      const saved = await saveTraining(updated)
+      setCourses(current => current.map(item => item.id === saved.id ? saved : item))
+      setEditingCourse(null)
+      notify('Treinamento atualizado com sucesso.')
+    } catch (error) {
+      notify(error instanceof ApiError ? error.message : 'Não foi possível salvar o treinamento.')
+    }
+  }
+  return <><div className="page-intro"><div><p className="eyebrow">Sua trilha de desenvolvimento</p><h2>Meus treinamentos</h2><p>Acompanhe seu progresso e continue aprendendo.</p></div><div className="training-page-actions">{canCreate && <button className="primary create-training-button" onClick={() => setShowCreateForm(current => !current)}>{showCreateForm ? 'Fechar formulário' : 'Novo treinamento'} <span>{showCreateForm ? '×' : '+'}</span></button>}<button className="secondary" onClick={() => notify('Filtros avançados em breve')}>Filtrar resultados</button></div></div>{showCreateForm && <form className="panel create-training-form" onSubmit={createTraining}><div className="section-heading"><div><p className="eyebrow">Área de gestão</p><h3>Novo treinamento</h3></div></div><div className="form-grid"><label className="field"><span>Nome do treinamento</span><input className="input" value={newTraining.title} onChange={event => updateNewTraining('title', event.target.value)} /></label><label className="field"><span>Área</span><input className="input" value={newTraining.area} onChange={event => updateNewTraining('area', event.target.value)} placeholder="Ex.: Atendimento" /></label><label className="field"><span>Instrutor</span><input className="input" value={newTraining.instructor} onChange={event => updateNewTraining('instructor', event.target.value)} /></label><label className="field"><span>Carga horária</span><input className="input" value={newTraining.duration} onChange={event => updateNewTraining('duration', event.target.value)} placeholder="Ex.: 2h 30min" /></label><label className="field field-wide"><span>Descrição</span><textarea className="input create-training-description" value={newTraining.description} onChange={event => updateNewTraining('description', event.target.value)} rows={3} /></label></div><div className="form-actions"><button className="form-submit" type="submit">Criar treinamento <span>→</span></button></div></form>}{editingCourse && <CourseEditor course={editingCourse} onSave={updateCourse} onCancel={() => setEditingCourse(null)} /> }<div className="tabs">{filters.map(item => <button className={filter === item ? 'tab active' : 'tab'} key={item} onClick={() => setFilter(item)}>{item}</button>)}</div><section className="panel"><TrainingTable data={visible} go={go} notify={notify} onOpen={openCourse} canEdit={canEdit} onEdit={setEditingCourse} /></section></>
 }
 
-function TrainingTable({ compact = false, data = trainings, go, notify, onOpen }: { compact?: boolean; data?: Course[]; go?: (page: Page) => void; notify?: (message: string) => void; onOpen?: (id: string) => void }) {
-  return <div className={compact ? 'data-table compact' : 'data-table'}><div className="table-row table-head"><span>Treinamento</span><span>Área</span><span>Progresso</span><span>Status</span><span>Ações</span></div>{data.map(item => <div className="table-row" key={item.title}><div><strong>{item.title}</strong><small>{item.videos.length} aulas • {item.pops.length} POPs • {item.fichas.length} fichas</small></div><span className="muted">{item.area}</span><div className="progress-cell"><strong>{item.progress}%</strong><ProgressBar value={item.progress} /></div><Status value={item.status} /><div className="actions">{!compact && <button className="small-button" onClick={() => { notify?.(`${item.title} selecionado`); onOpen?.(item.id) }}>{item.progress ? 'Continuar' : 'Iniciar'}</button>}<button className="small-button ghost" onClick={() => onOpen ? onOpen(item.id) : go?.('progress')}>Detalhes</button></div></div>)}</div>
+function TrainingTable({ compact = false, data = trainings, go, notify, onOpen, canEdit = false, onEdit }: { compact?: boolean; data?: Course[]; go?: (page: Page) => void; notify?: (message: string) => void; onOpen?: (id: string) => void; canEdit?: boolean; onEdit?: (course: Course) => void }) {
+  return <div className={compact ? 'data-table compact' : 'data-table'}><div className="table-row table-head"><span>Treinamento</span><span>Área</span><span>Progresso</span><span>Status</span><span>Ações</span></div>{data.map(item => <div className="table-row" key={item.title}><div><strong>{item.title}</strong><small>{item.videos.length} aulas • {item.pops.length} POPs • {item.fichas.length} fichas</small></div><span className="muted">{item.area}</span><div className="progress-cell"><strong>{item.progress}%</strong><ProgressBar value={item.progress} /></div><Status value={item.status} /><div className="actions">{!compact && <button className="small-button" onClick={() => { if (!item.videos.length) { notify?.('Adicione uma aula em vídeo antes de iniciar este treinamento.'); return } notify?.(`${item.title} selecionado`); onOpen?.(item.id) }}>{item.progress ? 'Continuar' : 'Iniciar'}</button>}<button className="small-button ghost" onClick={() => { if (onOpen && item.videos.length) onOpen(item.id); else if (onOpen) notify?.('Adicione uma aula em vídeo para acessar o treinamento.'); else go?.('progress') }}>Detalhes</button>{canEdit && !compact && <button className="icon-button" title="Editar treinamento e aulas" aria-label={`Editar ${item.title}`} onClick={() => onEdit?.(item)}>✎</button>}</div></div>)}</div>
 }
 
 function ProgressBar({ value }: { value: number }) { return <div className="progress-bar"><span style={{ width: `${value}%` }} /></div> }
 function Status({ value }: { value: string }) { return <span className={`status ${value.toLowerCase().replace(' ', '-')}`}>{value}</span> }
 
-function CourseDetail({ course, go, notify, onBack }: { course: Course; go: (page: Page) => void; notify: (message: string) => void; onBack: () => void }) {
+type SpeechRecognitionResultEvent = Event & {
+  results: SpeechRecognitionResultList
+  resultIndex: number
+}
+
+type SpeechRecognitionInstance = {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null
+  onerror: ((event: Event) => void) | null
+  onend: (() => void) | null
+  start: () => void
+  stop: () => void
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance
+
+function CourseEditor({ course, onSave, onCancel }: { course: Course; onSave: (course: Course) => void; onCancel: () => void }) {
+  const [draft, setDraft] = useState(course)
+  const [newVideo, setNewVideo] = useState({ title: '', duration: '', youtubeId: '', transcript: '' })
+  const [saving, setSaving] = useState(false)
+  const update = (key: 'title' | 'area' | 'instructor' | 'duration' | 'description', value: string) => {
+    setDraft(current => ({ ...current, [key]: value }))
+  }
+  const updateVideo = (index: number, key: keyof CourseVideo, value: string) => {
+    setDraft(current => ({ ...current, videos: current.videos.map((video, videoIndex) => videoIndex === index ? { ...video, [key]: value } : video) }))
+  }
+  const removeVideo = (index: number) => {
+    setDraft(current => ({ ...current, videos: current.videos.filter((_, videoIndex) => videoIndex !== index) }))
+  }
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!draft.title.trim() || !draft.area.trim() || !draft.instructor.trim() || !draft.duration.trim() || !draft.description.trim()) return
+    setSaving(true)
+    try {
+      await onSave({ ...draft, title: draft.title.trim(), area: draft.area.trim(), instructor: draft.instructor.trim(), duration: draft.duration.trim(), description: draft.description.trim() })
+    } finally {
+      setSaving(false)
+    }
+  }
+  function addVideo() {
+    if (!newVideo.title.trim() || !newVideo.duration.trim() || !newVideo.youtubeId.trim()) return
+    setDraft(current => ({ ...current, videos: [...current.videos, { title: newVideo.title.trim(), duration: newVideo.duration.trim(), youtubeId: newVideo.youtubeId.trim(), transcript: newVideo.transcript.trim() }] }))
+    setNewVideo({ title: '', duration: '', youtubeId: '', transcript: '' })
+  }
+  return <form className="panel course-editor" onSubmit={submit}>
+    <div className="section-heading"><div><p className="eyebrow">Área de gestão</p><h3>Editar treinamento e aulas</h3></div></div>
+    <div className="form-grid">
+      <label className="field"><span>Nome do treinamento</span><input className="input" value={draft.title} onChange={event => update('title', event.target.value)} /></label>
+      <label className="field"><span>Área</span><input className="input" value={draft.area} onChange={event => update('area', event.target.value)} /></label>
+      <label className="field"><span>Instrutor</span><input className="input" value={draft.instructor} onChange={event => update('instructor', event.target.value)} /></label>
+      <label className="field"><span>Carga horária</span><input className="input" value={draft.duration} onChange={event => update('duration', event.target.value)} /></label>
+      <label className="field field-wide"><span>Descrição</span><textarea className="input create-training-description" value={draft.description} onChange={event => update('description', event.target.value)} rows={3} /></label>
+    </div>
+    <div className="course-editor-lessons"><div className="section-heading"><div><p className="eyebrow">Conteúdo</p><h3>Aulas em vídeo</h3></div></div>
+      {draft.videos.map((video, index) => <div className="course-editor-video" key={`${video.youtubeId}-${index}`}><div className="course-editor-video-fields"><label className="field"><span>Título da aula</span><input className="input" value={video.title} onChange={event => updateVideo(index, 'title', event.target.value)} /></label><label className="field"><span>Duração</span><input className="input" value={video.duration} onChange={event => updateVideo(index, 'duration', event.target.value)} /></label><label className="field field-wide"><span>ID do vídeo no YouTube</span><input className="input" value={video.youtubeId} onChange={event => updateVideo(index, 'youtubeId', event.target.value)} /></label><label className="field field-wide"><span>Transcrição do vídeo</span><textarea className="input video-transcript-input" value={video.transcript} onChange={event => updateVideo(index, 'transcript', event.target.value)} rows={4} placeholder="Cole aqui a transcrição desta aula..." /></label></div><button className="small-button danger-button" type="button" onClick={() => removeVideo(index)}>Remover aula</button></div>)}
+      <div className="course-editor-add"><label className="field"><span>Nova aula</span><input className="input" value={newVideo.title} onChange={event => setNewVideo(current => ({ ...current, title: event.target.value }))} placeholder="Título da aula" /></label><label className="field"><span>Duração</span><input className="input" value={newVideo.duration} onChange={event => setNewVideo(current => ({ ...current, duration: event.target.value }))} placeholder="Ex.: 08:12" /></label><label className="field"><span>ID do YouTube</span><input className="input" value={newVideo.youtubeId} onChange={event => setNewVideo(current => ({ ...current, youtubeId: event.target.value }))} placeholder="Ex.: ZUvV_C5HxY4" /></label><label className="field field-wide"><span>Transcrição do vídeo</span><textarea className="input video-transcript-input" value={newVideo.transcript} onChange={event => setNewVideo(current => ({ ...current, transcript: event.target.value }))} rows={4} placeholder="Cole aqui a transcrição desta aula..." /></label><button className="secondary" type="button" onClick={addVideo}>Adicionar aula</button></div>
+    </div>
+    <div className="form-actions"><button className="form-submit" type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar alterações'} {!saving && <span>✓</span>}</button><button className="secondary" type="button" onClick={onCancel} disabled={saving}>Cancelar</button></div>
+  </form>
+}
+
+function KnowledgeRecorder({ trainingId, video }: { trainingId: string; video: CourseVideo }) {
+  const [isRecording, setIsRecording] = useState(false)
+  const [transcript, setTranscript] = useState('')
+  const [interimTranscript, setInterimTranscript] = useState('')
+  const [audioUrl, setAudioUrl] = useState('')
+  const [error, setError] = useState('')
+  const [evaluation, setEvaluation] = useState<TrainingEvaluation | null>(null)
+  const [evaluating, setEvaluating] = useState(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+
+  useEffect(() => () => {
+    recognitionRef.current?.stop()
+    mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop())
+    if (audioUrl) URL.revokeObjectURL(audioUrl)
+  }, [audioUrl])
+
+  async function toggleRecording() {
+    if (isRecording) {
+      mediaRecorderRef.current?.stop()
+      recognitionRef.current?.stop()
+      setIsRecording(false)
+      setInterimTranscript('')
+      return
+    }
+
+    const SpeechRecognition = (window as Window & {
+      SpeechRecognition?: SpeechRecognitionConstructor
+      webkitSpeechRecognition?: SpeechRecognitionConstructor
+    }).SpeechRecognition ?? (window as Window & {
+      webkitSpeechRecognition?: SpeechRecognitionConstructor
+    }).webkitSpeechRecognition
+
+    if (!SpeechRecognition) {
+      setError('A transcrição em tempo real não é compatível com este navegador. Use o Google Chrome ou Edge.')
+      return
+    }
+
+    setError('')
+    setEvaluation(null)
+    setTranscript('')
+    setInterimTranscript('')
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl)
+      setAudioUrl('')
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      audioChunksRef.current = []
+      recorder.ondataavailable = event => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data)
+      }
+      recorder.onstop = () => {
+        stream.getTracks().forEach(track => track.stop())
+        const recording = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' })
+        setAudioUrl(URL.createObjectURL(recording))
+      }
+
+      const recognition = new SpeechRecognition()
+      recognition.continuous = true
+      recognition.interimResults = true
+      recognition.lang = 'pt-BR'
+      recognition.onresult = event => {
+        let finalText = ''
+        let temporaryText = ''
+        for (let index = event.resultIndex; index < event.results.length; index += 1) {
+          const text = event.results[index][0].transcript
+          if (event.results[index].isFinal) finalText += text
+          else temporaryText += text
+        }
+        if (finalText) setTranscript(current => `${current}${current ? ' ' : ''}${finalText.trim()}`)
+        setInterimTranscript(temporaryText)
+      }
+      recognition.onerror = () => {
+        setError('Não foi possível transcrever sua fala. Verifique a permissão do microfone e tente novamente.')
+      }
+      recognitionRef.current = recognition
+      mediaRecorderRef.current = recorder
+      recorder.start()
+      recognition.start()
+      setIsRecording(true)
+    } catch {
+      setError('Não foi possível acessar o microfone. Autorize o acesso para iniciar a gravação.')
+    }
+  }
+
+  return <section className="knowledge-recorder" aria-live="polite">
+    <div className="knowledge-recorder-heading">
+      <div>
+        <p className="eyebrow">Reflexão da aula</p>
+        <h3>Teste seu conhecimento</h3>
+        <p>Grave sua resposta falando o que você aprendeu. A transcrição aparecerá em tempo real.</p>
+      </div>
+      <button className={isRecording ? 'record-button recording' : 'record-button'} onClick={toggleRecording} type="button">
+        <span className="record-button-icon">{isRecording ? '■' : '●'}</span>
+        {isRecording ? 'Parar gravação' : 'Começar gravação'}
+      </button>
+    </div>
+    <div className={isRecording ? 'transcript-box listening' : 'transcript-box'}>
+      {transcript || interimTranscript ? <>{transcript}<span className="transcript-interim">{interimTranscript}</span></> : <span className="transcript-placeholder">Sua transcrição aparecerá aqui...</span>}
+    </div>
+    {isRecording && <p className="recording-status"><span /> Ouvindo e transcrevendo...</p>}
+    {audioUrl && !isRecording && <div className="recording-preview"><span>Gravação salva nesta sessão</span><audio controls src={audioUrl}>Seu navegador não suporta áudio.</audio></div>}
+    {transcript && !isRecording && <button className="secondary evaluate-button" type="button" disabled={evaluating} onClick={async () => {
+      setEvaluating(true)
+      setError('')
+      try {
+        const response = await api.post<{ evaluation: TrainingEvaluation }>(`/api/trainings/${trainingId}/evaluate`, { youtubeId: video.youtubeId, transcript })
+        setEvaluation(response.evaluation)
+      } catch (evaluationError) {
+        setError(evaluationError instanceof ApiError ? evaluationError.message : 'Não foi possível avaliar sua resposta.')
+      } finally {
+        setEvaluating(false)
+      }
+    }}>{evaluating ? 'Avaliando resposta...' : 'Avaliar meu conhecimento'}</button>}
+    {evaluation && <EvaluationResult evaluation={evaluation} />}
+    {error && <p className="recorder-error" role="alert">{error}</p>}
+  </section>
+}
+
+type TrainingEvaluation = {
+  pontuacao: number
+  resumo: string
+  etapas: { etapa: string; status: 'compreendido' | 'parcial' | 'nao_mencionado' | 'incorreto'; justificativa: string }[]
+  pontos_melhoria: string[]
+  feedback: string
+}
+
+function EvaluationResult({ evaluation }: { evaluation: TrainingEvaluation }) {
+  const statusLabels = { compreendido: 'Compreendido', parcial: 'Parcial', nao_mencionado: 'Não mencionado', incorreto: 'Incorreto' }
+  return <div className="evaluation-result">
+    <div className="evaluation-result-heading"><div><p className="eyebrow">Resultado da avaliação</p><h3>Seu conhecimento</h3></div><strong>{Math.round(evaluation.pontuacao)}%</strong></div>
+    <p className="evaluation-summary">{evaluation.resumo}</p>
+    <div className="evaluation-steps">{evaluation.etapas.map((step, index) => <div className="evaluation-step" key={`${step.etapa}-${index}`}><div><strong>{step.etapa}</strong><p>{step.justificativa}</p></div><span className={`evaluation-status ${step.status}`}>{statusLabels[step.status]}</span></div>)}</div>
+    {evaluation.pontos_melhoria.length > 0 && <div className="evaluation-improvements"><strong>Pontos para melhorar</strong><ul>{evaluation.pontos_melhoria.map(point => <li key={point}>{point}</li>)}</ul></div>}
+    <p className="evaluation-feedback"><strong>Feedback:</strong> {evaluation.feedback}</p>
+  </div>
+}
+
+function CourseDetail({ course, go, notify, canEdit, onUpdate, onBack }: { course: Course; go: (page: Page) => void; notify: (message: string) => void; canEdit: boolean; onUpdate: (course: Course) => Promise<void>; onBack: () => void }) {
   const [activeVideo, setActiveVideo] = useState(0)
   const currentVideo = course.videos[activeVideo]
   return <>
@@ -323,6 +583,7 @@ function CourseDetail({ course, go, notify, onBack }: { course: Course; go: (pag
           <div className="course-video-actions">
             <button className="secondary" onClick={() => notify(`Aula "${currentVideo.title}" marcada como concluída`)}>Marcar como concluída</button>
           </div>
+          <KnowledgeRecorder key={currentVideo.youtubeId} trainingId={course.id} video={currentVideo} />
         </section>
         <section className="panel course-lessons">
           <div className="section-heading"><div><p className="eyebrow">Conteúdo do curso</p><h3>Aulas em vídeo</h3></div></div>

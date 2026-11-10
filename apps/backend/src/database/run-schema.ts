@@ -55,6 +55,28 @@ try {
   if (Number(popCategory[0]?.total ?? 0) === 0) {
     await connection.query("ALTER TABLE pop ADD COLUMN categoria VARCHAR(100) NOT NULL DEFAULT 'Geral' AFTER codigo")
   }
+  const trilhaColumns = [
+    ['area', 'VARCHAR(120) NULL'],
+    ['instrutor', 'VARCHAR(200) NULL'],
+    ['duracao', 'VARCHAR(60) NULL'],
+  ] as const
+  for (const [column, definition] of trilhaColumns) {
+    const [existing] = await connection.query(
+      `SELECT COUNT(*) AS total FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = 'trilha' AND column_name = ?`,
+      [column],
+    ) as [{ total: number }[], unknown]
+    if (Number(existing[0]?.total ?? 0) === 0) {
+      await connection.query(`ALTER TABLE trilha ADD COLUMN ${column} ${definition}`)
+    }
+    const [videoTranscript] = await connection.query(
+      `SELECT COUNT(*) AS total FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = 'video' AND column_name = 'transcricao'`,
+    ) as [{ total: number }[], unknown]
+    if (Number(videoTranscript[0]?.total ?? 0) === 0) {
+      await connection.query('ALTER TABLE video ADD COLUMN transcricao LONGTEXT NULL AFTER duracao_segundos')
+    }
+  }
   await connection.query(`
     CREATE TABLE IF NOT EXISTS historico_visualizacao (
       id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

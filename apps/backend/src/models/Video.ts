@@ -5,10 +5,12 @@ export class Video extends Model<InferAttributes<Video>, InferCreationAttributes
   declare materialId: bigint
   declare url: string
   declare duracaoSegundos: number | null
+  declare transcricao: string | null
 }
 
 Video.init({
   materialId: { type: DataTypes.BIGINT.UNSIGNED, primaryKey: true, field: 'material_id' },
   url: { type: DataTypes.STRING(2048), allowNull: false },
   duracaoSegundos: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true, field: 'duracao_segundos' },
+  transcricao: { type: DataTypes.TEXT, allowNull: true },
 }, { sequelize, tableName: 'video', timestamps: false })
