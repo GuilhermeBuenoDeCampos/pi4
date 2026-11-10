@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai'
 
 const MAX_TRANSCRIPT_LENGTH = 100_000
+const MAX_GEMINI_ATTEMPTS = 3
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 })
@@ -11,6 +12,15 @@ type Evaluation = {
   etapas: { etapa: string; status: string; justificativa: string }[]
   pontos_melhoria: string[]
   feedback: string
+}
+
+function isTemporaryGeminiError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+
+  const candidate = error as { status?: unknown; message?: unknown }
+  return candidate.status === 503
+    || (typeof candidate.message === 'string'
+      && (candidate.message.includes('"code":503') || candidate.message.includes('"status":"UNAVAILABLE"')))
 }
 
 export async function avaliarConhecimento(
@@ -27,11 +37,9 @@ export async function avaliarConhecimento(
     throw new Error('As transcrições excedem o limite permitido.')
   }
 
-  let response
-  try {
-    response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash-lite',
-      contents: `
+  const request = {
+    model: 'gemini-3.5-flash-lite',
+    contents: `
         Você é um avaliador de treinamentos corporativos.
 
         Compare as duas transcrições.
@@ -62,13 +70,28 @@ export async function avaliarConhecimento(
         status deve ser um destes valores:
         compreendido, parcial, nao_mencionado ou incorreto.
       `,
-      config: {
-        responseMimeType: 'application/json',
-      },
-    })
-  } catch (error) {
-    const detail = error instanceof Error ? `: ${error.message}` : ''
-    throw new Error(`Erro ao consultar o Gemini${detail}`)
+    config: {
+      responseMimeType: 'application/json',
+    },
+  }
+
+  let response
+  for (let attempt = 1; attempt <= MAX_GEMINI_ATTEMPTS; attempt += 1) {
+    try {
+      response = await ai.models.generateContent(request)
+      break
+    } catch (error) {
+      if (!isTemporaryGeminiError(error) || attempt === MAX_GEMINI_ATTEMPTS) {
+        const detail = error instanceof Error ? `: ${error.message}` : ''
+        throw new Error(`Erro ao consultar o Gemini${detail}`)
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1_000 * 2 ** (attempt - 1)))
+    }
+  }
+
+  if (!response) {
+    throw new Error('O Gemini não retornou uma resposta.')
   }
 
   const content = response.text
