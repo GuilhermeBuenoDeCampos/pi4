@@ -27,6 +27,24 @@ function orderedMaterials(training: Trilha) {
   })
 }
 
+async function loadTrainingMaterials(trilhaId: bigint, empresaId: bigint) {
+  const links = await TrilhaMaterial.findAll({
+    where: { trilhaId, empresaId },
+    include: [{
+      model: Material,
+      as: 'material',
+      required: true,
+      where: { empresaId, tipo: 'VIDEO', ativo: true },
+      include: [{ model: Video, as: 'video', required: true }],
+    }],
+    order: [['ordem', 'ASC']],
+  })
+
+  return links
+    .map(link => link.get('material') as Material | null)
+    .filter((material): material is Material => material !== null)
+}
+
 function serializeTraining(training: Trilha) {
   const materials = orderedMaterials(training)
   return {
@@ -169,7 +187,7 @@ router.post('/:id/evaluate', requireAuth, requireCompany, asyncHandler(async (re
     response.status(404).json({ message: 'Treinamento não encontrado.' })
     return
   }
-  const materials = orderedMaterials(training)
+  const materials = await loadTrainingMaterials(BigInt(id), BigInt(request.auth!.empresaId!))
   const material = (Number.isInteger(requestedVideoIndex) && requestedVideoIndex >= 0
     ? materials[requestedVideoIndex]
     : undefined) ?? materials.find(item => {
