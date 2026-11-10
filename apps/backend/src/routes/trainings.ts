@@ -362,16 +362,23 @@ router.put('/:id', requireAuth, requireCompany, requireRole([...creatorRoles]), 
   await sequelize.transaction(async transaction => {
     await training.update({ titulo: title, area, descricao: description, instrutor: instructor, duracao: duration, quiz }, { transaction })
     const currentMaterials = (training.get('materiais') as (Material & { Video?: Video | null })[] | undefined) ?? []
+    const currentLinks = await TrilhaMaterial.findAll({ where: { empresaId, trilhaId: training.id }, transaction })
+    const linksByMaterialId = new Map(currentLinks.map(link => [String(link.materialId), link]))
+    await Promise.all(currentLinks.map(link => link.update({ ordem: link.ordem + 100000 }, { transaction })))
     for (const [index, rawVideo] of videos.entries()) {
-      const video = rawVideo as { title: string; duration?: string; youtubeId: string; transcript?: string }
+      const video = rawVideo as { materialId?: string; title: string; duration?: string; youtubeId: string; transcript?: string }
       const submittedYoutubeId = youtubeId(video.youtubeId)
-      const current = currentMaterials.find(item => youtubeId(getVideo(item)?.url) === submittedYoutubeId) ?? currentMaterials[index]
+      const current = (video.materialId ? currentMaterials.find(item => String(item.id) === video.materialId) : undefined)
+        ?? currentMaterials.find(item => youtubeId(getVideo(item)?.url) === submittedYoutubeId)
+        ?? currentMaterials[index]
       if (current) {
         await current.update({ titulo: String(video.title).trim() }, { transaction })
         const currentVideo = getVideo(current)
         if (currentVideo) {
           await currentVideo.update({ url: submittedYoutubeId, duracaoSegundos: parseDuration(video.duration), transcricao: String(video.transcript ?? '').trim() || null }, { transaction })
         }
+        const link = linksByMaterialId.get(String(current.id))
+        if (link) await link.update({ ordem: index + 1 }, { transaction })
       } else {
         const material = await Material.create({ empresaId, titulo: String(video.title).trim(), descricao: null, tipo: 'VIDEO', versao: 1, ativo: true }, { transaction })
         await Video.create({ materialId: material.id, url: submittedYoutubeId, duracaoSegundos: parseDuration(video.duration), transcricao: String(video.transcript ?? '').trim() || null }, { transaction })
