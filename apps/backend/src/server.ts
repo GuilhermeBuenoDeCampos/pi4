@@ -1,7 +1,8 @@
 import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
-import './models/index.js'
+import { AvaliacaoPratica, AvaliacaoQuiz } from './models/index.js'
+import assessmentRoutes from './routes/assessments.js'
 import authRoutes from './routes/auth.js'
 import collaboratorRoutes from './routes/collaborators.js'
 import materialRoutes from './routes/materials.js'
@@ -26,10 +27,22 @@ app.get('/api/dashboard', (_request, response) => {
 })
 
 app.use('/api/auth', authRoutes)
+app.use('/api/assessments', assessmentRoutes)
 app.use('/api/admin/collaborators', collaboratorRoutes)
 app.use('/api/materials', materialRoutes)
 app.use('/api/history', historyRoutes)
 app.use('/api/trainings', trainingRoutes)
+
+async function ensureAssessmentTables() {
+  try {
+    await AvaliacaoQuiz.sync()
+    await AvaliacaoPratica.sync()
+  } catch (error) {
+    console.error('Não foi possível verificar as tabelas de avaliação.', error)
+  }
+}
+
+void ensureAssessmentTables()
 
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
   console.error(error)

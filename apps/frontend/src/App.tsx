@@ -8,11 +8,15 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { NewCollaboratorPage } from './pages/NewCollaboratorPage'
 import { RegisterCompanyPage } from './pages/RegisterCompanyPage'
+import { CollaboratorAssessmentsPage } from './pages/CollaboratorAssessmentsPage'
 import { api, ApiError } from './lib/api'
 
-type Page = 'landing' | 'dashboard' | 'trainings' | 'course' | 'progress' | 'assessments' | 'certificates' | 'notifications' | 'profile' | 'products' | 'pops' | 'history' | 'collaborators'
+type Page = 'landing' | 'dashboard' | 'trainings' | 'course' | 'progress' | 'assessments' | 'certificates' | 'notifications' | 'profile' | 'products' | 'pops' | 'history' | 'collaborators' | 'team-assessments'
 
-const managerNavItem: { id: Page; label: string; icon: string } = { id: 'collaborators', label: 'Colaboradores', icon: '☷' }
+const managerNavItems: { id: Page; label: string; icon: string }[] = [
+  { id: 'collaborators', label: 'Colaboradores', icon: '☷' },
+  { id: 'team-assessments', label: 'Avaliações da equipe', icon: '★' },
+]
 
 const navItems: { id: Page; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Início', icon: '⌂' },
@@ -150,6 +154,409 @@ const trainings: Course[] = [
   },
 ]
 
+type QuizQuestion = { statement: string; options: string[]; answer: number; explanation: string }
+
+type QuizResult = {
+  score: number
+  correct: number
+  total: number
+  passed: boolean
+  answers: number[]
+  submittedAt: string
+}
+
+const quizBank: Record<string, QuizQuestion[]> = {
+  'boas-praticas-cozinha': [
+    {
+      statement: 'Qual é a forma correta de higienizar as mãos na cozinha?',
+      options: [
+        'Passar álcool em gel rapidamente sobre as mãos.',
+        'Lavar com água e sabão, esfregando palmas, dorsos, entre os dedos e punhos por pelo menos 20 segundos.',
+        'Apenas enxaguar as mãos com água corrente.',
+        'Usar luvas sem lavar as mãos antes.',
+      ],
+      answer: 1,
+      explanation: 'A higienização adequada exige água, sabão e fricção de todas as áreas das mãos por tempo suficiente para reduzir os microrganismos.',
+    },
+    {
+      statement: 'O que é contaminação cruzada?',
+      options: [
+        'A transferência de microrganismos de um alimento ou superfície contaminada para outro alimento seguro.',
+        'O cozimento incompleto de um alimento.',
+        'O armazenamento de alimentos em temperatura ambiente.',
+        'A mistura intencional de ingredientes de uma receita.',
+      ],
+      answer: 0,
+      explanation: 'A contaminação cruzada acontece quando microrganismos passam de alimentos crus, mãos, utensílios ou superfícies para alimentos prontos.',
+    },
+    {
+      statement: 'Qual atitude ajuda a evitar a contaminação cruzada?',
+      options: [
+        'Usar a mesma tábua para carnes cruas e alimentos cozidos.',
+        'Guardar alimentos crus junto aos alimentos prontos.',
+        'Usar tábuas e utensílios diferentes para alimentos crus e cozidos.',
+        'Limpar a bancada apenas no final do turno.',
+      ],
+      answer: 2,
+      explanation: 'Separar utensílios e superfícies por tipo de alimento reduz o risco de transferência de microrganismos entre eles.',
+    },
+    {
+      statement: 'Onde os alimentos crus devem ser armazenados na geladeira?',
+      options: [
+        'Nas prateleiras superiores, próximos aos alimentos prontos.',
+        'Nas prateleiras inferiores, em recipientes fechados e identificados.',
+        'Na porta da geladeira, para facilitar o acesso.',
+        'Fora da geladeira, desde que cobertos.',
+      ],
+      answer: 1,
+      explanation: 'Alimentos crus devem ficar nas prateleiras inferiores para evitar que líquidos escorram sobre alimentos prontos.',
+    },
+    {
+      statement: 'Com que frequência o checklist diário da cozinha deve ser preenchido?',
+      options: [
+        'Apenas quando houver uma inspeção.',
+        'Uma vez por mês.',
+        'Diariamente, antes e durante o turno de trabalho.',
+        'Somente quando o responsável lembrar.',
+      ],
+      answer: 2,
+      explanation: 'O checklist deve ser preenchido diariamente para garantir que os padrões de higiene e organização sejam mantidos.',
+    },
+  ],
+  'atendimento-balcao': [
+    {
+      statement: 'O que mais contribui para a primeira impressão no balcão?',
+      options: [
+        'A forma como o cliente é recebido, incluindo postura, contato visual e saudação.',
+        'A quantidade de produtos disponíveis.',
+        'O tempo total que o cliente permanece no local.',
+        'O valor da compra realizada.',
+      ],
+      answer: 0,
+      explanation: 'A recepção acolhedora e a postura profissional transmitem confiança e abrem espaço para um bom atendimento.',
+    },
+    {
+      statement: 'Qual tom de voz é mais adequado durante o atendimento?',
+      options: [
+        'Baixo e monótono, para não chamar atenção.',
+        'Acolhedor, claro e em volume suficiente para ser ouvido sem esforço.',
+        'Alto e firme, para demonstrar autoridade.',
+        'Rápido e direto, para atender mais clientes.',
+      ],
+      answer: 1,
+      explanation: 'Um tom acolhedor, claro e audível transmite atenção e respeito, sem soar agressivo ou desinteressado.',
+    },
+    {
+      statement: 'Como lidar com a reclamação de um cliente?',
+      options: [
+        'Explicar imediatamente que o cliente está errado.',
+        'Ignorar a reclamação até o cliente se acalmar.',
+        'Ouvir com atenção, demonstrar empatia, pedir desculpas quando necessário e encaminhar a solução.',
+        'Transferir o cliente para outro setor sem prestar atenção.',
+      ],
+      answer: 2,
+      explanation: 'Escutar, acolher e buscar uma solução mostra respeito pelo cliente e aumenta a chance de recuperar a experiência.',
+    },
+    {
+      statement: 'O que fazer ao encerrar o atendimento?',
+      options: [
+        'Encerrar a conversa assim que o pagamento for concluído.',
+        'Agradecer ao cliente e convidá-lo a voltar.',
+        'Pedir que o cliente avalie a loja imediatamente.',
+        'Desligar-se do cliente para iniciar outro atendimento.',
+      ],
+      answer: 1,
+      explanation: 'Agradecer e convidar a voltar reforça a boa experiência e incentiva o retorno do cliente.',
+    },
+    {
+      statement: 'Interromper um cliente que está reclamando é uma atitude:',
+      options: [
+        'Recomendada para agilizar o atendimento.',
+        'Que aumenta a insatisfação; o ideal é ouvir até o fim.',
+        'Necessária para manter a ordem no balcão.',
+        'Aceitável se o cliente estiver falando alto.',
+      ],
+      answer: 1,
+      explanation: 'Interromper pode fazer o cliente se sentir desvalorizado. O ideal é ouvir com atenção e buscar a solução.',
+    },
+  ],
+  'higienizacao-utensilios': [
+    {
+      statement: 'Qual é a ordem correta da higienização dos utensílios?',
+      options: [
+        'Desinfetar, lavar, enxaguar e secar.',
+        'Remover resíduos, lavar com água e detergente, enxaguar, desinfetar e secar.',
+        'Enxaguar, desinfetar, lavar e guardar.',
+        'Lavar, secar e desinfetar com o utensílio já guardado.',
+      ],
+      answer: 1,
+      explanation: 'A sequência correta remove a sujeira, reduz microrganismos e evita que resíduos permaneçam nos utensílios.',
+    },
+    {
+      statement: 'Ao utilizar um produto químico de limpeza, deve-se:',
+      options: [
+        'Seguir a diluição e o tempo de contato indicados no rótulo.',
+        'Usar o produto puro para garantir maior eficiência.',
+        'Misturar produtos diferentes para reforçar a limpeza.',
+        'Deixar o produto agir apenas por alguns segundos.',
+      ],
+      answer: 0,
+      explanation: 'Cada produto tem uma diluição e um tempo de contato recomendados; segui-los garante eficácia e segurança.',
+    },
+    {
+      statement: 'Como armazenar os utensílios após a higienização?',
+      options: [
+        'Em local limpo e seco, protegidos de poeira e contaminação.',
+        'Ainda úmidos, empilhados sobre a bancada.',
+        'Em caixas fechadas no chão da cozinha.',
+        'Junto aos produtos de limpeza.',
+      ],
+      answer: 0,
+      explanation: 'O armazenamento limpo e seco evita a recontaminação dos utensílios já higienizados.',
+    },
+    {
+      statement: 'Qual cuidado é importante ao higienizar utensílios usados em alimentos crus?',
+      options: [
+        'Higienizá-los junto aos utensílios de alimentos prontos.',
+        'Higienizá-los separadamente, para evitar contaminação cruzada.',
+        'Apenas enxaguá-los com água.',
+        'Reutilizá-los imediatamente em alimentos prontos.',
+      ],
+      answer: 1,
+      explanation: 'Separar os utensílios de alimentos crus reduz o risco de transferir microrganismos para alimentos prontos.',
+    },
+    {
+      statement: 'Por que é importante secar corretamente os utensílios?',
+      options: [
+        'A umidade favorece a multiplicação de microrganismos.',
+        'Para deixar os utensílios mais brilhantes.',
+        'Porque a água quente danifica o material.',
+        'Para reduzir o tempo de armazenamento.',
+      ],
+      answer: 0,
+      explanation: 'Superfícies úmidas criam condições favoráveis para a multiplicação de microrganismos.',
+    },
+  ],
+  'seguranca-alimentar': [
+    {
+      statement: 'Qual é a chamada zona de perigo de temperatura dos alimentos?',
+      options: [
+        'Entre -18 °C e 0 °C.',
+        'Entre 5 °C e 60 °C.',
+        'Entre 60 °C e 100 °C.',
+        'Acima de 100 °C.',
+      ],
+      answer: 1,
+      explanation: 'Entre 5 °C e 60 °C os microrganismos encontram condições favoráveis para se multiplicar rapidamente.',
+    },
+    {
+      statement: 'O que fazer com um alimento pronto que está sem identificação?',
+      options: [
+        'Utilizar mesmo assim, se aparentar estar bom.',
+        'Descartar ou não utilizar, pois não é possível garantir validade e segurança.',
+        'Recolocar o rótulo com a data do dia.',
+        'Servir apenas para a equipe da cozinha.',
+      ],
+      answer: 1,
+      explanation: 'Sem identificação não há como garantir a validade e a segurança do alimento, por isso ele não deve ser utilizado.',
+    },
+    {
+      statement: 'As doenças transmitidas por alimentos são causadas principalmente por:',
+      options: [
+        'Consumo de alimentos contaminados por microrganismos ou toxinas.',
+        'Alimentos com sabores muito fortes.',
+        'Refeições preparadas em grande quantidade.',
+        'Alimentos ricos em fibras.',
+      ],
+      answer: 0,
+      explanation: 'Microrganismos e toxinas presentes em alimentos contaminados são as principais causas dessas doenças.',
+    },
+    {
+      statement: 'Ao receber um alimento congelado, é importante:',
+      options: [
+        'Verificar temperatura, embalagem e condições de transporte antes de armazenar.',
+        'Colocá-lo imediatamente no freezer sem conferir nada.',
+        'Descongelá-lo em temperatura ambiente.',
+        'Aceitar mesmo que a embalagem esteja danificada.',
+      ],
+      answer: 0,
+      explanation: 'A conferência na recepção identifica falhas na cadeia de frio e embalagens danificadas, evitando riscos.',
+    },
+    {
+      statement: 'Uma rotulagem adequada deve conter:',
+      options: [
+        'Apenas o nome do produto.',
+        'Identificação do produto, data de manipulação/validade e responsável.',
+        'Somente a data de compra.',
+        'Apenas o preço e o peso.',
+      ],
+      answer: 1,
+      explanation: 'A rotulagem permite rastrear o alimento, controlar sua validade e identificar o responsável pela manipulação.',
+    },
+  ],
+}
+
+const quizBankByTitle: Record<string, QuizQuestion[]> = {
+  'Boas Práticas na Cozinha': quizBank['boas-praticas-cozinha'],
+  'Atendimento no Balcão': quizBank['atendimento-balcao'],
+  'Higienização de Utensílios': quizBank['higienizacao-utensilios'],
+  'Segurança Alimentar': quizBank['seguranca-alimentar'],
+}
+
+function quizQuestionsFor(course: Course) {
+  return quizBank[course.id] ?? quizBankByTitle[course.title] ?? null
+}
+
+function quizResultKey(userId: string | undefined, courseId: string) {
+  return `infinity.quiz.result.${userId ?? 'anon'}.${courseId}`
+}
+
+function loadQuizResult(userId: string | undefined, courseId: string): QuizResult | null {
+  try {
+    const raw = window.localStorage.getItem(quizResultKey(userId, courseId))
+    return raw ? JSON.parse(raw) as QuizResult : null
+  } catch {
+    return null
+  }
+}
+
+function saveQuizResult(userId: string | undefined, courseId: string, result: QuizResult) {
+  try {
+    window.localStorage.setItem(quizResultKey(userId, courseId), JSON.stringify(result))
+  } catch {
+    // Se o armazenamento não estiver disponível, o resultado continua visível nesta sessão.
+  }
+}
+
+const QUIZ_PASS_SCORE = 70
+
+function KnowledgeQuiz({ course }: { course: Course }) {
+  const { user } = useAuth()
+  const questions = quizQuestionsFor(course)
+  const [answers, setAnswers] = useState<number[]>([])
+  const [result, setResult] = useState<QuizResult | null>(() => questions ? loadQuizResult(user?.id, course.id) : null)
+  const [reviewing, setReviewing] = useState(() => Boolean(questions && loadQuizResult(user?.id, course.id)))
+
+  if (!questions || !questions.length) {
+    return <section className="knowledge-quiz">
+      <div className="knowledge-recorder-heading">
+        <div>
+          <p className="eyebrow">Avaliação teórica</p>
+          <h3>Teste seu conhecimento</h3>
+          <p>Este treinamento ainda não possui um quiz configurado.</p>
+        </div>
+      </div>
+    </section>
+  }
+
+  const answeredCount = answers.filter(answer => answer >= 0).length
+  const allAnswered = answeredCount === questions.length
+
+  function selectAnswer(questionIndex: number, optionIndex: number) {
+    setAnswers(current => {
+      const next = current.length === questions!.length ? [...current] : Array(questions!.length).fill(-1)
+      next[questionIndex] = optionIndex
+      return next
+    })
+  }
+
+  function submitQuiz() {
+    if (!allAnswered) return
+    const correct = questions!.reduce((total, question, index) => total + (answers[index] === question.answer ? 1 : 0), 0)
+    const score = Math.round((correct / questions!.length) * 100)
+    const nextResult: QuizResult = {
+      score,
+      correct,
+      total: questions!.length,
+      passed: score >= QUIZ_PASS_SCORE,
+      answers: [...answers],
+      submittedAt: new Date().toISOString(),
+    }
+    setResult(nextResult)
+    setReviewing(true)
+    saveQuizResult(user?.id, course.id, nextResult)
+    api.post('/api/assessments', {
+      courseId: course.id,
+      courseTitle: course.title,
+      correct,
+      total: questions!.length,
+      answers: [...answers],
+    }).catch(() => {
+      // O resultado local permanece disponível mesmo se o envio ao servidor falhar.
+    })
+  }
+
+  function restartQuiz() {
+    setAnswers(Array(questions!.length).fill(-1))
+    setResult(null)
+    setReviewing(false)
+  }
+
+  return <section className="knowledge-quiz" aria-live="polite">
+    <div className="knowledge-recorder-heading">
+      <div>
+        <p className="eyebrow">Avaliação teórica</p>
+        <h3>Teste seu conhecimento</h3>
+        <p>Responda às {questions.length} perguntas sobre a aula. A nota mínima para aprovação é {QUIZ_PASS_SCORE}%.</p>
+      </div>
+      {!reviewing && <span className="quiz-progress-badge">{answeredCount}/{questions.length} respondidas</span>}
+    </div>
+
+    {reviewing && result
+      ? <div className={result.passed ? 'quiz-result passed' : 'quiz-result failed'}>
+        <div className="quiz-result-heading">
+          <div>
+            <p className="eyebrow">Resultado do quiz</p>
+            <h3>{result.passed ? 'Parabéns, você atingiu o desempenho esperado!' : 'Você ainda não atingiu o desempenho esperado.'}</h3>
+            <p>Você acertou {result.correct} de {result.total} perguntas.</p>
+          </div>
+          <div className="quiz-score"><strong>{result.score}%</strong><span>{result.passed ? 'Aprovado' : 'Reprovado'}</span></div>
+        </div>
+        <p className="quiz-result-message">{result.passed ? 'Continue revisando o conteúdo para manter o domínio do assunto.' : 'Revise as orientações abaixo e refaça o quiz para melhorar sua nota.'}</p>
+        <div className="quiz-review">
+          {questions.map((question, index) => {
+            const chosen = result.answers[index]
+            const isCorrect = chosen === question.answer
+            return <div className={isCorrect ? 'quiz-review-item correct' : 'quiz-review-item incorrect'} key={question.statement}>
+              <div className="quiz-review-question">
+                <span className="quiz-review-icon">{isCorrect ? '✓' : '✕'}</span>
+                <div>
+                  <strong>{index + 1}. {question.statement}</strong>
+                  <p>Sua resposta: {question.options[chosen] ?? 'Não respondida'}</p>
+                  {!isCorrect && <p>Resposta correta: {question.options[question.answer]}</p>}
+                  <p className="quiz-explanation">{question.explanation}</p>
+                </div>
+              </div>
+            </div>
+          })}
+        </div>
+        <div className="quiz-actions">
+          <button className="secondary" type="button" onClick={restartQuiz}>{result.passed ? 'Refazer quiz' : 'Tentar novamente'}</button>
+        </div>
+      </div>
+      : <div className="quiz-form">
+        {questions.map((question, questionIndex) => <fieldset className="quiz-question" key={question.statement}>
+          <legend><span className="quiz-question-number">{questionIndex + 1}</span>{question.statement}</legend>
+          <div className="quiz-options">
+            {question.options.map((option, optionIndex) => <button
+              className={answers[questionIndex] === optionIndex ? 'quiz-option selected' : 'quiz-option'}
+              type="button"
+              key={option}
+              onClick={() => selectAnswer(questionIndex, optionIndex)}
+            >
+              <span className="quiz-option-letter">{String.fromCharCode(65 + optionIndex)}</span>
+              {option}
+            </button>)}
+          </div>
+        </fieldset>)}
+        <div className="quiz-actions">
+          <span className="quiz-answered-hint">{answeredCount === questions.length ? 'Todas as perguntas foram respondidas.' : `Responda todas as perguntas para enviar (${answeredCount}/${questions.length}).`}</span>
+          <button className="form-submit" type="button" disabled={!allAnswered} onClick={submitQuiz}>Enviar respostas <span>→</span></button>
+        </div>
+      </div>}
+  </section>
+}
+
 function PlatformApp({ initialPage = 'landing' }: { initialPage?: Page }) {
   const { user, activeCompany, canManage, logout } = useAuth()
   const [courses, setCourses] = useState(trainings)
@@ -196,6 +603,7 @@ function PlatformApp({ initialPage = 'landing' }: { initialPage?: Page }) {
         {page === 'pops' && <Pops notify={notify} canManage={canManage} />}
         {page === 'history' && <ViewHistory />}
         {page === 'collaborators' && <NewCollaboratorPage notify={notify} onBack={() => setPage('dashboard')} />}
+        {page === 'team-assessments' && <CollaboratorAssessmentsPage notify={notify} />}
       </main>
       {toast && <div className="toast">{toast}</div>}
     </div>
@@ -203,7 +611,7 @@ function PlatformApp({ initialPage = 'landing' }: { initialPage?: Page }) {
 }
 
 function pageTitle(page: Page, courseTitle?: string) {
-  const titles: Record<Page, string> = { landing: 'Infinity Code', dashboard: 'Dashboard do funcionário', trainings: 'Meus treinamentos', course: courseTitle ?? 'Detalhes do curso', progress: 'Meu progresso', assessments: 'Avaliações', certificates: 'Certificados', notifications: 'Notificações', profile: 'Meu perfil', products: 'Fichas técnicas dos produtos', pops: 'Selecionar POP', history: 'Histórico de visualizações', collaborators: 'Colaboradores' }
+  const titles: Record<Page, string> = { landing: 'Infinity Code', dashboard: 'Dashboard do funcionário', trainings: 'Meus treinamentos', course: courseTitle ?? 'Detalhes do curso', progress: 'Meu progresso', assessments: 'Avaliações', certificates: 'Certificados', notifications: 'Notificações', profile: 'Meu perfil', products: 'Fichas técnicas dos produtos', pops: 'Selecionar POP', history: 'Histórico de visualizações', collaborators: 'Colaboradores', 'team-assessments': 'Avaliação dos colaboradores' }
   return titles[page]
 }
 
@@ -249,7 +657,7 @@ function Benefit({ icon, title, text }: { icon: string; title: string; text: str
 }
 
 function Sidebar({ page, go, canManage, onLogout }: { page: Page; go: (page: Page) => void; canManage: boolean; onLogout: () => void }) {
-  const items = canManage ? [...navItems, managerNavItem] : navItems
+  const items = canManage ? [...navItems, ...managerNavItems] : navItems
   return <aside className="sidebar">
     <div className="brand">INFINITY<br /><span>CODE</span></div>
     <nav>{items.map(item => <button key={item.id} className={page === item.id ? 'nav-item active' : 'nav-item'} onClick={() => go(item.id)}><span className="nav-icon">{item.icon}</span>{item.label}</button>)}</nav>
@@ -495,7 +903,7 @@ function KnowledgeRecorder({ trainingId, video }: { trainingId: string; video: C
     <div className="knowledge-recorder-heading">
       <div>
         <p className="eyebrow">Reflexão da aula</p>
-        <h3>Teste seu conhecimento</h3>
+        <h3>Grave sua reflexão</h3>
         <p>Grave sua resposta falando o que você aprendeu. A transcrição aparecerá em tempo real.</p>
       </div>
       <button className={isRecording ? 'record-button recording' : 'record-button'} onClick={toggleRecording} type="button">
@@ -584,6 +992,7 @@ function CourseDetail({ course, go, notify, canEdit, onUpdate, onBack }: { cours
             <button className="secondary" onClick={() => notify(`Aula "${currentVideo.title}" marcada como concluída`)}>Marcar como concluída</button>
           </div>
           <KnowledgeRecorder key={currentVideo.youtubeId} trainingId={course.id} video={currentVideo} />
+          <KnowledgeQuiz key={course.id} course={course} />
         </section>
         <section className="panel course-lessons">
           <div className="section-heading"><div><p className="eyebrow">Conteúdo do curso</p><h3>Aulas em vídeo</h3></div></div>
