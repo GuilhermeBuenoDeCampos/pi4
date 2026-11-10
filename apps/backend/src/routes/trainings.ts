@@ -10,8 +10,12 @@ const creatorRoles = ['ADMIN', 'GESTOR', 'INSTRUTOR'] as const
 
 function youtubeId(value: unknown) {
   const input = String(value ?? '').trim()
-  const match = input.match(/(?:youtu\.be\/|youtube\.com\/watch\?v=|youtube\.com\/embed\/)([^?&/]+)/i)
+  const match = input.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/))([^?&/]+)/i)
   return match?.[1] ?? input
+}
+
+function getVideo(material: Material) {
+  return material.get('video') as Video | null
 }
 
 function serializeTraining(training: Trilha) {
@@ -26,7 +30,7 @@ function serializeTraining(training: Trilha) {
     instructor: training.instrutor ?? '',
     duration: training.duracao ?? '',
     videos: materials.map(material => {
-      const video = material.get('video') as Video | null
+      const video = getVideo(material)
       return {
         title: material.titulo,
         duration: video?.duracaoSegundos ? `${Math.floor(video.duracaoSegundos / 60)}:${String(video.duracaoSegundos % 60).padStart(2, '0')}` : '',
@@ -149,7 +153,11 @@ router.post('/:id/evaluate', requireAuth, requireCompany, asyncHandler(async (re
   })
   const materials = (training?.get('materiais') as (Material & { Video?: Video | null })[] | undefined) ?? []
   const material = materials.find(item => youtubeId((item.get('video') as Video | null)?.url) === requestedYoutubeId)
-  const video = material?.get('video') as Video | null
+  if (!material) {
+    response.status(404).json({ message: 'A aula selecionada não foi encontrada neste treinamento.' })
+    return
+  }
+  const video = getVideo(material)
   if (!video?.transcricao?.trim()) {
     response.status(422).json({ message: 'Esta aula ainda não possui uma transcrição para comparação.' })
     return
@@ -191,16 +199,17 @@ router.put('/:id', requireAuth, requireCompany, requireRole([...creatorRoles]), 
     const currentMaterials = (training.get('materiais') as (Material & { Video?: Video | null })[] | undefined) ?? []
     for (const [index, rawVideo] of videos.entries()) {
       const video = rawVideo as { title: string; duration?: string; youtubeId: string; transcript?: string }
-      const current = currentMaterials[index]
+      const submittedYoutubeId = youtubeId(video.youtubeId)
+      const current = currentMaterials.find(item => youtubeId(getVideo(item)?.url) === submittedYoutubeId) ?? currentMaterials[index]
       if (current) {
         await current.update({ titulo: String(video.title).trim() }, { transaction })
-        const currentVideo = current.get('video') as Video | null
+        const currentVideo = getVideo(current)
         if (currentVideo) {
-          await currentVideo.update({ url: youtubeId(video.youtubeId), duracaoSegundos: parseDuration(video.duration), transcricao: String(video.transcript ?? '').trim() || null }, { transaction })
+          await currentVideo.update({ url: submittedYoutubeId, duracaoSegundos: parseDuration(video.duration), transcricao: String(video.transcript ?? '').trim() || null }, { transaction })
         }
       } else {
         const material = await Material.create({ empresaId, titulo: String(video.title).trim(), descricao: null, tipo: 'VIDEO', versao: 1, ativo: true }, { transaction })
-        await Video.create({ materialId: material.id, url: youtubeId(video.youtubeId), duracaoSegundos: parseDuration(video.duration), transcricao: String(video.transcript ?? '').trim() || null }, { transaction })
+        await Video.create({ materialId: material.id, url: submittedYoutubeId, duracaoSegundos: parseDuration(video.duration), transcricao: String(video.transcript ?? '').trim() || null }, { transaction })
         await TrilhaMaterial.create({ empresaId, trilhaId: training.id, materialId: material.id, ordem: index + 1, obrigatorio: true }, { transaction })
       }
     }
