@@ -31,5 +31,5 @@ AvaliacaoPratica.init({
   sequelize,
   tableName: 'avaliacao_pratica',
   timestamps: false,
-  indexes: [{ name: 'idx_aval_pratica_empresa_usuario', fields: ['empresaId', 'usuarioId', 'criadoEm'] }],
+  indexes: [{ name: 'idx_aval_pratica_empresa_usuario', fields: ['empresa_id', 'usuario_id', 'criado_em'] }],
 })

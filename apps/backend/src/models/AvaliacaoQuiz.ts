@@ -31,5 +31,5 @@ AvaliacaoQuiz.init({
   sequelize,
   tableName: 'avaliacao_quiz',
   timestamps: false,
-  indexes: [{ name: 'idx_aval_empresa_usuario', fields: ['empresaId', 'usuarioId', 'criadoEm'] }],
+  indexes: [{ name: 'idx_aval_empresa_usuario', fields: ['empresa_id', 'usuario_id', 'criado_em'] }],
 })
