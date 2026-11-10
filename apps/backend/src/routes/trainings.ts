@@ -133,6 +133,7 @@ router.post('/', requireAuth, requireCompany, requireRole([...creatorRoles]), as
 router.post('/:id/evaluate', requireAuth, requireCompany, asyncHandler(async (request, response) => {
   const id = typeof request.params.id === 'string' ? request.params.id : ''
   const requestedYoutubeId = youtubeId(request.body?.youtubeId)
+  const requestedVideoTitle = String(request.body?.videoTitle ?? '').trim().toLocaleLowerCase()
   const collaboratorTranscript = String(request.body?.transcript ?? '').trim()
   if (!/^\d+$/.test(id) || !requestedYoutubeId || !collaboratorTranscript) {
     response.status(400).json({ message: 'Informe a aula e a transcrição da sua resposta.' })
@@ -152,7 +153,11 @@ router.post('/:id/evaluate', requireAuth, requireCompany, asyncHandler(async (re
     }],
   })
   const materials = (training?.get('materiais') as (Material & { Video?: Video | null })[] | undefined) ?? []
-  const material = materials.find(item => youtubeId((item.get('video') as Video | null)?.url) === requestedYoutubeId)
+  const material = materials.find(item => {
+    const video = getVideo(item)
+    return youtubeId(video?.url) === requestedYoutubeId
+      || (requestedVideoTitle !== '' && item.titulo.trim().toLocaleLowerCase() === requestedVideoTitle)
+  })
   if (!material) {
     response.status(404).json({ message: 'A aula selecionada não foi encontrada neste treinamento.' })
     return

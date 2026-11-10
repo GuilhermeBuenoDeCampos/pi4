@@ -158,6 +158,17 @@ function PlatformApp({ initialPage = 'landing' }: { initialPage?: Page }) {
   const [toast, setToast] = useState('')
   const selectedCourse = courses.find(course => course.id === courseId) ?? null
   const canEditTrainings = activeCompany?.papel === 'ADMIN' || activeCompany?.papel === 'GESTOR' || activeCompany?.papel === 'INSTRUTOR'
+  useEffect(() => {
+    let active = true
+    if (user && activeCompany) {
+      api.get<Course[]>('/api/trainings').then(data => {
+        if (active) setCourses(data)
+      }).catch(error => {
+        if (active) console.error('Não foi possível carregar os treinamentos salvos.', error)
+      })
+    }
+    return () => { active = false }
+  }, [user, activeCompany])
   const openCourse = (id: string) => {
     setCourseId(id)
     setPage('course')
@@ -512,7 +523,7 @@ function KnowledgeRecorder({ trainingId, video }: { trainingId: string; video: C
       setEvaluating(true)
       setError('')
       try {
-        const response = await api.post<{ evaluation: TrainingEvaluation }>(`/api/trainings/${trainingId}/evaluate`, { youtubeId: video.youtubeId, transcript })
+        const response = await api.post<{ evaluation: TrainingEvaluation }>(`/api/trainings/${trainingId}/evaluate`, { youtubeId: video.youtubeId, videoTitle: video.title, transcript })
         setEvaluation(response.evaluation)
       } catch (evaluationError) {
         setError(evaluationError instanceof ApiError ? evaluationError.message : 'Não foi possível avaliar sua resposta.')
