@@ -795,7 +795,7 @@ type SpeechRecognitionInstance = {
 type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance
 
 function CourseEditor({ course, onSave, onCancel }: { course: Course; onSave: (course: Course) => void; onCancel: () => void }) {
-  const [draft, setDraft] = useState(course)
+  const [draft, setDraft] = useState({ ...course, quiz: course.quiz ? course.quiz.map(question => ({ ...question, options: [...question.options] })) : [] })
   const [newVideo, setNewVideo] = useState({ title: '', duration: '', youtubeId: '', transcript: '' })
   const [saving, setSaving] = useState(false)
   const update = (key: 'title' | 'area' | 'instructor' | 'duration' | 'description', value: string) => {
@@ -807,12 +807,24 @@ function CourseEditor({ course, onSave, onCancel }: { course: Course; onSave: (c
   const removeVideo = (index: number) => {
     setDraft(current => ({ ...current, videos: current.videos.filter((_, videoIndex) => videoIndex !== index) }))
   }
+  function addQuizQuestion() {
+    setDraft(current => ({ ...current, quiz: [...(current.quiz ?? []), { statement: '', options: ['', '', '', ''], answer: 0, explanation: '' }] }))
+  }
+  function updateQuizQuestion(index: number, patch: Partial<QuizQuestion>) {
+    setDraft(current => ({ ...current, quiz: (current.quiz ?? []).map((question, questionIndex) => questionIndex === index ? { ...question, ...patch } : question) }))
+  }
+  function updateQuizOption(questionIndex: number, optionIndex: number, value: string) {
+    setDraft(current => ({ ...current, quiz: (current.quiz ?? []).map((question, index) => index === questionIndex ? { ...question, options: question.options.map((option, index) => index === optionIndex ? value : option) } : question) }))
+  }
+  function removeQuizQuestion(index: number) {
+    setDraft(current => ({ ...current, quiz: (current.quiz ?? []).filter((_, questionIndex) => questionIndex !== index) }))
+  }
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!draft.title.trim() || !draft.area.trim() || !draft.instructor.trim() || !draft.duration.trim() || !draft.description.trim()) return
     setSaving(true)
     try {
-      await onSave({ ...draft, title: draft.title.trim(), area: draft.area.trim(), instructor: draft.instructor.trim(), duration: draft.duration.trim(), description: draft.description.trim() })
+      await onSave({ ...draft, quiz: draft.quiz?.length ? draft.quiz : null, title: draft.title.trim(), area: draft.area.trim(), instructor: draft.instructor.trim(), duration: draft.duration.trim(), description: draft.description.trim() })
     } finally {
       setSaving(false)
     }
@@ -834,6 +846,9 @@ function CourseEditor({ course, onSave, onCancel }: { course: Course; onSave: (c
     <div className="course-editor-lessons"><div className="section-heading"><div><p className="eyebrow">Conteúdo</p><h3>Aulas em vídeo</h3></div></div>
       {draft.videos.map((video, index) => <div className="course-editor-video" key={`${video.youtubeId}-${index}`}><div className="course-editor-video-fields"><label className="field"><span>Título da aula</span><input className="input" value={video.title} onChange={event => updateVideo(index, 'title', event.target.value)} /></label><label className="field"><span>Duração</span><input className="input" value={video.duration} onChange={event => updateVideo(index, 'duration', event.target.value)} /></label><label className="field field-wide"><span>ID do vídeo no YouTube</span><input className="input" value={video.youtubeId} onChange={event => updateVideo(index, 'youtubeId', event.target.value)} /></label><label className="field field-wide"><span>Transcrição do vídeo</span><textarea className="input video-transcript-input" value={video.transcript} onChange={event => updateVideo(index, 'transcript', event.target.value)} rows={4} placeholder="Cole aqui a transcrição desta aula..." /></label></div><button className="small-button danger-button" type="button" onClick={() => removeVideo(index)}>Remover aula</button></div>)}
       <div className="course-editor-add"><label className="field"><span>Nova aula</span><input className="input" value={newVideo.title} onChange={event => setNewVideo(current => ({ ...current, title: event.target.value }))} placeholder="Título da aula" /></label><label className="field"><span>Duração</span><input className="input" value={newVideo.duration} onChange={event => setNewVideo(current => ({ ...current, duration: event.target.value }))} placeholder="Ex.: 08:12" /></label><label className="field"><span>ID do YouTube</span><input className="input" value={newVideo.youtubeId} onChange={event => setNewVideo(current => ({ ...current, youtubeId: event.target.value }))} placeholder="Ex.: ZUvV_C5HxY4" /></label><label className="field field-wide"><span>Transcrição do vídeo</span><textarea className="input video-transcript-input" value={newVideo.transcript} onChange={event => setNewVideo(current => ({ ...current, transcript: event.target.value }))} rows={4} placeholder="Cole aqui a transcrição desta aula..." /></label><button className="secondary" type="button" onClick={addVideo}>Adicionar aula</button></div>
+    </div>
+    <div className="create-quiz"><div className="section-heading"><div><p className="eyebrow">Avaliação</p><h3>Quiz do treinamento</h3><p>Crie ou edite as perguntas que os colaboradores responderão.</p></div><button className="secondary" type="button" onClick={addQuizQuestion}>+ Adicionar pergunta</button></div>
+      {(draft.quiz ?? []).map((question, questionIndex) => <div className="quiz-editor" key={questionIndex}><div className="quiz-editor-head"><strong>Pergunta {questionIndex + 1}</strong><button className="text-button" type="button" onClick={() => removeQuizQuestion(questionIndex)}>Remover</button></div><input className="input" placeholder="Enunciado da pergunta" value={question.statement} onChange={event => updateQuizQuestion(questionIndex, { statement: event.target.value })} />{question.options.map((option, optionIndex) => <input className="input" key={optionIndex} placeholder={`Opção ${String.fromCharCode(65 + optionIndex)}`} value={option} onChange={event => updateQuizOption(questionIndex, optionIndex, event.target.value)} />)}<select className="input" value={question.answer} onChange={event => updateQuizQuestion(questionIndex, { answer: Number(event.target.value) })}>{question.options.map((_, optionIndex) => <option key={optionIndex} value={optionIndex}>Resposta correta: {String.fromCharCode(65 + optionIndex)}</option>)}</select><input className="input" placeholder="Explicação da resposta correta" value={question.explanation} onChange={event => updateQuizQuestion(questionIndex, { explanation: event.target.value })} /></div>)}
     </div>
     <div className="form-actions"><button className="form-submit" type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar alterações'} {!saving && <span>✓</span>}</button><button className="secondary" type="button" onClick={onCancel} disabled={saving}>Cancelar</button></div>
   </form>
