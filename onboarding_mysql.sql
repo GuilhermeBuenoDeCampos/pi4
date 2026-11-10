@@ -4,7 +4,7 @@ CREATE DATABASE IF NOT EXISTS onboarding_corporativo
   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE onboarding_corporativo;
 
-CREATE TABLE usuario (
+CREATE TABLE IF NOT EXISTS usuario (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   nome VARCHAR(150) NOT NULL,
   email VARCHAR(255) NOT NULL,
@@ -16,7 +16,7 @@ CREATE TABLE usuario (
   UNIQUE KEY uk_usuario_email (email)
 ) ENGINE=InnoDB;
 
-CREATE TABLE empresa (
+CREATE TABLE IF NOT EXISTS empresa (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   razao_social VARCHAR(200) NOT NULL,
   nome_fantasia VARCHAR(200) NOT NULL,
@@ -26,7 +26,7 @@ CREATE TABLE empresa (
   UNIQUE KEY uk_empresa_cnpj (cnpj)
 ) ENGINE=InnoDB;
 
-CREATE TABLE token_senha (
+CREATE TABLE IF NOT EXISTS token_senha (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   usuario_id BIGINT UNSIGNED NOT NULL,
   token_hash CHAR(64) NOT NULL,
@@ -39,7 +39,7 @@ CREATE TABLE token_senha (
   CONSTRAINT fk_token_senha_usuario FOREIGN KEY (usuario_id) REFERENCES usuario(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE cargo (
+CREATE TABLE IF NOT EXISTS cargo (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   empresa_id BIGINT UNSIGNED NOT NULL,
   nome VARCHAR(120) NOT NULL,
@@ -49,7 +49,7 @@ CREATE TABLE cargo (
   CONSTRAINT fk_cargo_empresa FOREIGN KEY (empresa_id) REFERENCES empresa(id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE empresa_usuario (
+CREATE TABLE IF NOT EXISTS empresa_usuario (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   empresa_id BIGINT UNSIGNED NOT NULL,
   usuario_id BIGINT UNSIGNED NOT NULL,
@@ -68,7 +68,7 @@ CREATE TABLE empresa_usuario (
     REFERENCES cargo(empresa_id, id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE trilha (
+CREATE TABLE IF NOT EXISTS trilha (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   empresa_id BIGINT UNSIGNED NOT NULL,
   titulo VARCHAR(200) NOT NULL,
@@ -80,7 +80,7 @@ CREATE TABLE trilha (
   CONSTRAINT fk_trilha_empresa FOREIGN KEY (empresa_id) REFERENCES empresa(id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE material (
+CREATE TABLE IF NOT EXISTS material (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   empresa_id BIGINT UNSIGNED NOT NULL,
   titulo VARCHAR(200) NOT NULL,
@@ -91,18 +91,17 @@ CREATE TABLE material (
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_material_empresa_id (empresa_id, id),
-  CONSTRAINT fk_material_empresa FOREIGN KEY (empresa_id) REFERENCES empresa(id),
-  CONSTRAINT chk_material_versao CHECK (versao >= 1)
+  CONSTRAINT fk_material_empresa FOREIGN KEY (empresa_id) REFERENCES empresa(id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE video (
+CREATE TABLE IF NOT EXISTS video (
   material_id BIGINT UNSIGNED PRIMARY KEY,
   url VARCHAR(2048) NOT NULL,
   duracao_segundos INT UNSIGNED NULL,
   CONSTRAINT fk_video_material FOREIGN KEY (material_id) REFERENCES material(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE pop (
+CREATE TABLE IF NOT EXISTS pop (
   material_id BIGINT UNSIGNED PRIMARY KEY,
   codigo VARCHAR(60) NOT NULL,
   procedimento LONGTEXT NULL,
@@ -110,7 +109,7 @@ CREATE TABLE pop (
   CONSTRAINT fk_pop_material FOREIGN KEY (material_id) REFERENCES material(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE ficha_tecnica (
+CREATE TABLE IF NOT EXISTS ficha_tecnica (
   material_id BIGINT UNSIGNED PRIMARY KEY,
   codigo VARCHAR(60) NOT NULL,
   especificacoes LONGTEXT NULL,
@@ -118,7 +117,7 @@ CREATE TABLE ficha_tecnica (
   CONSTRAINT fk_ficha_material FOREIGN KEY (material_id) REFERENCES material(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE trilha_material (
+CREATE TABLE IF NOT EXISTS trilha_material (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   empresa_id BIGINT UNSIGNED NOT NULL,
   trilha_id BIGINT UNSIGNED NOT NULL,
@@ -134,7 +133,7 @@ CREATE TABLE trilha_material (
   CONSTRAINT fk_tm_material FOREIGN KEY (empresa_id, material_id) REFERENCES material(empresa_id, id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE atribuicao (
+CREATE TABLE IF NOT EXISTS atribuicao (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   empresa_id BIGINT UNSIGNED NOT NULL,
   empresa_usuario_id BIGINT UNSIGNED NOT NULL,
@@ -151,26 +150,33 @@ CREATE TABLE atribuicao (
     REFERENCES empresa_usuario(empresa_id, id),
   CONSTRAINT fk_atr_trilha FOREIGN KEY (empresa_id, trilha_id)
     REFERENCES trilha(empresa_id, id),
-  CONSTRAINT fk_atr_atribuidor FOREIGN KEY (atribuido_por) REFERENCES usuario(id),
-  CONSTRAINT chk_atr_prazo CHECK (prazo IS NULL OR prazo >= data_inicio)
+  CONSTRAINT fk_atr_atribuidor FOREIGN KEY (atribuido_por) REFERENCES usuario(id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE progresso (
+CREATE TABLE IF NOT EXISTS progresso (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   empresa_id BIGINT UNSIGNED NOT NULL,
   atribuicao_id BIGINT UNSIGNED NOT NULL,
   trilha_material_id BIGINT UNSIGNED NOT NULL,
-  status ENUM('NAO_INICIADO','EM_ANDAMENTO','CONCLUIDO') NOT NULL DEFAULT 'NAO_INICIADO',
+  status ENUM('NAO_INICIADO','EM_ANDAMENTO','CONCLUIDO')
+    NOT NULL DEFAULT 'NAO_INICIADO',
   percentual TINYINT UNSIGNED NOT NULL DEFAULT 0,
   concluido_em DATETIME NULL,
-  UNIQUE KEY uk_progresso_atr_item (atribuicao_id, trilha_material_id),
+
+  UNIQUE KEY uk_progresso_atr_item
+    (atribuicao_id, trilha_material_id),
+
   KEY idx_prog_atr (empresa_id, atribuicao_id),
   KEY idx_prog_item (empresa_id, trilha_material_id),
-  CONSTRAINT fk_prog_atr FOREIGN KEY (empresa_id, atribuicao_id)
+
+  CONSTRAINT fk_prog_atr
+    FOREIGN KEY (empresa_id, atribuicao_id)
     REFERENCES atribuicao(empresa_id, id),
-  CONSTRAINT fk_prog_item FOREIGN KEY (empresa_id, trilha_material_id)
-    REFERENCES trilha_material(empresa_id, id),
-  CONSTRAINT chk_prog_percentual CHECK (percentual BETWEEN 0 AND 100)
+
+  CONSTRAINT fk_prog_item
+    FOREIGN KEY (empresa_id, trilha_material_id)
+    REFERENCES trilha_material(empresa_id, id)
+
 ) ENGINE=InnoDB;
 
 -- Regras de negócio para validar na aplicação ou via triggers:
