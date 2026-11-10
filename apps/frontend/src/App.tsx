@@ -47,6 +47,7 @@ type Course = {
   videos: CourseVideo[]
   pops: CoursePop[]
   fichas: CourseFicha[]
+  quiz?: QuizQuestion[] | null
 }
 
 async function saveTraining(training: Course) {
@@ -404,7 +405,7 @@ const quizBankByTitle: Record<string, QuizQuestion[]> = {
 }
 
 function quizQuestionsFor(course: Course) {
-  return quizBank[course.id] ?? quizBankByTitle[course.title] ?? null
+  return course.quiz?.length ? course.quiz : quizBank[course.id] ?? quizBankByTitle[course.title] ?? null
 }
 
 function quizResultKey(userId: string | undefined, courseId: string) {
@@ -703,7 +704,7 @@ function Metric({ label, value, caption, icon }: { label: string; value: string;
 function Trainings({ go, notify, openCourse, courses, setCourses, canCreate, canEdit }: { go: (page: Page) => void; notify: (message: string) => void; openCourse: (id: string) => void; courses: Course[]; setCourses: React.Dispatch<React.SetStateAction<Course[]>>; canCreate: boolean; canEdit: boolean }) {
   const [filter, setFilter] = useState('Todos')
   const [showCreateForm, setShowCreateForm] = useState(false)
-  const [newTraining, setNewTraining] = useState({ title: '', area: '', description: '', instructor: '', duration: '' })
+  const [newTraining, setNewTraining] = useState({ title: '', area: '', description: '', instructor: '', duration: '', quiz: [] as QuizQuestion[] })
   const [editingCourse, setEditingCourse] = useState<Course | null>(null)
   const filters = ['Todos', 'Em andamento', 'Concluídos', 'Pendentes', 'Reprovados']
   const visible = filter === 'Todos' ? courses : courses.filter(item => item.status === filter.replace('Concluídos', 'Concluído').replace('Pendentes', 'Pendente'))
@@ -719,6 +720,18 @@ function Trainings({ go, notify, openCourse, courses, setCourses, canCreate, can
   function updateNewTraining(key: keyof typeof newTraining, value: string) {
     setNewTraining(current => ({ ...current, [key]: value }))
   }
+  function addQuizQuestion() {
+    setNewTraining(current => ({ ...current, quiz: [...current.quiz, { statement: '', options: ['', '', '', ''], answer: 0, explanation: '' }] }))
+  }
+  function updateQuizQuestion(index: number, patch: Partial<QuizQuestion>) {
+    setNewTraining(current => ({ ...current, quiz: current.quiz.map((question, questionIndex) => questionIndex === index ? { ...question, ...patch } : question) }))
+  }
+  function removeQuizQuestion(index: number) {
+    setNewTraining(current => ({ ...current, quiz: current.quiz.filter((_, questionIndex) => questionIndex !== index) }))
+  }
+  function updateQuizOption(questionIndex: number, optionIndex: number, value: string) {
+    setNewTraining(current => ({ ...current, quiz: current.quiz.map((question, index) => index === questionIndex ? { ...question, options: question.options.map((option, index) => index === optionIndex ? value : option) } : question) }))
+  }
   async function createTraining(event: React.FormEvent) {
     event.preventDefault()
     if (!newTraining.title.trim() || !newTraining.area.trim() || !newTraining.description.trim() || !newTraining.instructor.trim() || !newTraining.duration.trim()) {
@@ -733,9 +746,10 @@ function Trainings({ go, notify, openCourse, courses, setCourses, canCreate, can
         instructor: newTraining.instructor,
         duration: newTraining.duration,
         videos: [],
+        quiz: newTraining.quiz.length ? newTraining.quiz : null,
       })
       setCourses(current => [response.training, ...current.filter(item => item.id !== response.training.id)])
-      setNewTraining({ title: '', area: '', description: '', instructor: '', duration: '' })
+      setNewTraining({ title: '', area: '', description: '', instructor: '', duration: '', quiz: [] })
       setShowCreateForm(false)
       notify('Treinamento criado com sucesso.')
     } catch (error) {
@@ -752,7 +766,7 @@ function Trainings({ go, notify, openCourse, courses, setCourses, canCreate, can
       notify(error instanceof ApiError ? error.message : 'Não foi possível salvar o treinamento.')
     }
   }
-  return <><div className="page-intro"><div><p className="eyebrow">Sua trilha de desenvolvimento</p><h2>Meus treinamentos</h2><p>Acompanhe seu progresso e continue aprendendo.</p></div><div className="training-page-actions">{canCreate && <button className="primary create-training-button" onClick={() => setShowCreateForm(current => !current)}>{showCreateForm ? 'Fechar formulário' : 'Novo treinamento'} <span>{showCreateForm ? '×' : '+'}</span></button>}<button className="secondary" onClick={() => notify('Filtros avançados em breve')}>Filtrar resultados</button></div></div>{showCreateForm && <form className="panel create-training-form" onSubmit={createTraining}><div className="section-heading"><div><p className="eyebrow">Área de gestão</p><h3>Novo treinamento</h3></div></div><div className="form-grid"><label className="field"><span>Nome do treinamento</span><input className="input" value={newTraining.title} onChange={event => updateNewTraining('title', event.target.value)} /></label><label className="field"><span>Área</span><input className="input" value={newTraining.area} onChange={event => updateNewTraining('area', event.target.value)} placeholder="Ex.: Atendimento" /></label><label className="field"><span>Instrutor</span><input className="input" value={newTraining.instructor} onChange={event => updateNewTraining('instructor', event.target.value)} /></label><label className="field"><span>Carga horária</span><input className="input" value={newTraining.duration} onChange={event => updateNewTraining('duration', event.target.value)} placeholder="Ex.: 2h 30min" /></label><label className="field field-wide"><span>Descrição</span><textarea className="input create-training-description" value={newTraining.description} onChange={event => updateNewTraining('description', event.target.value)} rows={3} /></label></div><div className="form-actions"><button className="form-submit" type="submit">Criar treinamento <span>→</span></button></div></form>}{editingCourse && <CourseEditor course={editingCourse} onSave={updateCourse} onCancel={() => setEditingCourse(null)} /> }<div className="tabs">{filters.map(item => <button className={filter === item ? 'tab active' : 'tab'} key={item} onClick={() => setFilter(item)}>{item}</button>)}</div><section className="panel"><TrainingTable data={visible} go={go} notify={notify} onOpen={openCourse} canEdit={canEdit} onEdit={setEditingCourse} /></section></>
+  return <><div className="page-intro"><div><p className="eyebrow">Sua trilha de desenvolvimento</p><h2>Meus treinamentos</h2><p>Acompanhe seu progresso e continue aprendendo.</p></div><div className="training-page-actions">{canCreate && <button className="primary create-training-button" onClick={() => setShowCreateForm(current => !current)}>{showCreateForm ? 'Fechar formulário' : 'Novo treinamento'} <span>{showCreateForm ? '×' : '+'}</span></button>}<button className="secondary" onClick={() => notify('Filtros avançados em breve')}>Filtrar resultados</button></div></div>{showCreateForm && <form className="panel create-training-form" onSubmit={createTraining}><div className="section-heading"><div><p className="eyebrow">Área de gestão</p><h3>Novo treinamento</h3></div></div><div className="form-grid"><label className="field"><span>Nome do treinamento</span><input className="input" value={newTraining.title} onChange={event => updateNewTraining('title', event.target.value)} /></label><label className="field"><span>Área</span><input className="input" value={newTraining.area} onChange={event => updateNewTraining('area', event.target.value)} placeholder="Ex.: Atendimento" /></label><label className="field"><span>Instrutor</span><input className="input" value={newTraining.instructor} onChange={event => updateNewTraining('instructor', event.target.value)} /></label><label className="field"><span>Carga horária</span><input className="input" value={newTraining.duration} onChange={event => updateNewTraining('duration', event.target.value)} placeholder="Ex.: 2h 30min" /></label><label className="field field-wide"><span>Descrição</span><textarea className="input create-training-description" value={newTraining.description} onChange={event => updateNewTraining('description', event.target.value)} rows={3} /></label></div><div className="create-quiz"><div className="section-heading"><div><p className="eyebrow">Avaliação</p><h3>Quiz do treinamento</h3><p>Adicione perguntas para os colaboradores responderem após as aulas.</p></div><button className="secondary" type="button" onClick={addQuizQuestion}>+ Adicionar pergunta</button></div>{newTraining.quiz.map((question, questionIndex) => <div className="quiz-editor" key={questionIndex}><div className="quiz-editor-head"><strong>Pergunta {questionIndex + 1}</strong><button className="text-button" type="button" onClick={() => removeQuizQuestion(questionIndex)}>Remover</button></div><input className="input" placeholder="Enunciado da pergunta" value={question.statement} onChange={event => updateQuizQuestion(questionIndex, { statement: event.target.value })} />{question.options.map((option, optionIndex) => <input className="input" key={optionIndex} placeholder={`Opção ${String.fromCharCode(65 + optionIndex)}`} value={option} onChange={event => updateQuizOption(questionIndex, optionIndex, event.target.value)} />)}<select className="input" value={question.answer} onChange={event => updateQuizQuestion(questionIndex, { answer: Number(event.target.value) })}>{question.options.map((_, optionIndex) => <option key={optionIndex} value={optionIndex}>Resposta correta: {String.fromCharCode(65 + optionIndex)}</option>)}</select><input className="input" placeholder="Explicação da resposta correta" value={question.explanation} onChange={event => updateQuizQuestion(questionIndex, { explanation: event.target.value })} /></div>)}</div><div className="form-actions"><button className="form-submit" type="submit">Criar treinamento <span>→</span></button></div></form>}{editingCourse && <CourseEditor course={editingCourse} onSave={updateCourse} onCancel={() => setEditingCourse(null)} /> }<div className="tabs">{filters.map(item => <button className={filter === item ? 'tab active' : 'tab'} key={item} onClick={() => setFilter(item)}>{item}</button>)}</div><section className="panel"><TrainingTable data={visible} go={go} notify={notify} onOpen={openCourse} canEdit={canEdit} onEdit={setEditingCourse} /></section></>
 }
 
 function TrainingTable({ compact = false, data = trainings, go, notify, onOpen, canEdit = false, onEdit }: { compact?: boolean; data?: Course[]; go?: (page: Page) => void; notify?: (message: string) => void; onOpen?: (id: string) => void; canEdit?: boolean; onEdit?: (course: Course) => void }) {

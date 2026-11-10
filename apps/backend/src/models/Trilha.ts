@@ -9,6 +9,7 @@ export class Trilha extends Model<InferAttributes<Trilha>, InferCreationAttribut
   declare area: string | null
   declare instrutor: string | null
   declare duracao: string | null
+  declare quiz: unknown
   declare obrigatoria: CreationOptional<boolean>
   declare ativa: CreationOptional<boolean>
   declare criadoEm: CreationOptional<Date>
@@ -22,6 +23,7 @@ Trilha.init({
   area: { type: DataTypes.STRING(120), allowNull: true },
   instrutor: { type: DataTypes.STRING(200), allowNull: true },
   duracao: { type: DataTypes.STRING(60), allowNull: true },
+  quiz: { type: DataTypes.JSON, allowNull: true },
   obrigatoria: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   ativa: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   criadoEm: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: 'criado_em' },

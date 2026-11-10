@@ -19,6 +19,22 @@ function getVideo(material: Material) {
   return material.get('video') as Video | null
 }
 
+function parseQuiz(value: unknown) {
+  if (!Array.isArray(value) || value.length === 0) return null
+  const questions = value.map(raw => {
+    if (!raw || typeof raw !== 'object') return null
+    const question = raw as { statement?: unknown; options?: unknown; answer?: unknown; explanation?: unknown }
+    const statement = String(question.statement ?? '').trim()
+    const options = Array.isArray(question.options) ? question.options.map(option => String(option ?? '').trim()) : []
+    const answer = Number(question.answer)
+    const explanation = String(question.explanation ?? '').trim()
+    if (!statement || options.length < 2 || options.length > 6 || options.some(option => !option)
+      || !Number.isInteger(answer) || answer < 0 || answer >= options.length || !explanation) return null
+    return { statement: statement.slice(0, 500), options: options.map(option => option.slice(0, 300)), answer, explanation: explanation.slice(0, 1000) }
+  })
+  return questions.every(Boolean) ? questions : null
+}
+
 function orderedMaterials(training: Trilha) {
   const materials = (training.get('materiais') as (Material & { Video?: Video | null })[] | undefined) ?? []
   return materials.sort((left, right) => {
@@ -131,6 +147,7 @@ async function serializeTraining(training: Trilha, empresaId: bigint, usuarioId:
         transcript: video?.transcricao ?? '',
       }
     }),
+    quiz: parseQuiz(training.quiz),
     pops: [],
     fichas: [],
   }
@@ -162,12 +179,17 @@ router.post('/', requireAuth, requireCompany, requireRole([...creatorRoles]), as
   const instructor = String(request.body?.instructor ?? '').trim()
   const duration = String(request.body?.duration ?? '').trim()
   const videos = Array.isArray(request.body?.videos) ? request.body.videos : []
+  const quiz = request.body?.quiz === undefined ? null : parseQuiz(request.body.quiz)
   if (!title || !area || !description || !instructor || !duration) {
     response.status(400).json({ message: 'Informe nome, área, descrição, instrutor e carga horária.' })
     return
   }
   if (videos.some((video: unknown) => !video || typeof video !== 'object' || !String((video as { title?: unknown }).title ?? '').trim() || !youtubeId((video as { youtubeId?: unknown }).youtubeId))) {
     response.status(400).json({ message: 'Cada aula deve ter título e um vídeo válido.' })
+    return
+  }
+  if (request.body?.quiz !== undefined && request.body.quiz !== null && !quiz) {
+    response.status(400).json({ message: 'Cada pergunta do quiz deve ter enunciado, de 2 a 6 opções, resposta correta e explicação.' })
     return
   }
 
@@ -180,6 +202,7 @@ router.post('/', requireAuth, requireCompany, requireRole([...creatorRoles]), as
       descricao: description,
       instrutor: instructor,
       duracao: duration,
+      quiz,
       obrigatoria: false,
       ativa: true,
     }, { transaction })
@@ -330,9 +353,14 @@ router.put('/:id', requireAuth, requireCompany, requireRole([...creatorRoles]), 
     response.status(404).json({ message: 'Treinamento não encontrado.' })
     return
   }
+  const quiz = request.body?.quiz === undefined ? training.quiz : request.body?.quiz === null ? null : parseQuiz(request.body.quiz)
+  if (request.body?.quiz !== undefined && request.body.quiz !== null && !quiz) {
+    response.status(400).json({ message: 'Cada pergunta do quiz deve ter enunciado, de 2 a 6 opções, resposta correta e explicação.' })
+    return
+  }
 
   await sequelize.transaction(async transaction => {
-    await training.update({ titulo: title, area, descricao: description, instrutor: instructor, duracao: duration }, { transaction })
+    await training.update({ titulo: title, area, descricao: description, instrutor: instructor, duracao: duration, quiz }, { transaction })
     const currentMaterials = (training.get('materiais') as (Material & { Video?: Video | null })[] | undefined) ?? []
     for (const [index, rawVideo] of videos.entries()) {
       const video = rawVideo as { title: string; duration?: string; youtubeId: string; transcript?: string }

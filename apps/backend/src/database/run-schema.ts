@@ -59,6 +59,7 @@ try {
     ['area', 'VARCHAR(120) NULL'],
     ['instrutor', 'VARCHAR(200) NULL'],
     ['duracao', 'VARCHAR(60) NULL'],
+    ['quiz', 'JSON NULL'],
   ] as const
   for (const [column, definition] of trilhaColumns) {
     const [existing] = await connection.query(
