@@ -4,7 +4,7 @@ const MAX_TRANSCRIPT_LENGTH = 100_000
 const MAX_GEMINI_ATTEMPTS = 2
 const geminiModels = [
   process.env.GEMINI_MODEL ?? 'gemini-3.5-flash-lite',
-  process.env.GEMINI_FALLBACK_MODEL ?? 'gemini-3-flash-preview',
+  process.env.GEMINI_FALLBACK_MODEL ?? 'gemini-2.5-flash',
 ]
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
