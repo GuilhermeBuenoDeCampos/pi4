@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { api, ApiError } from '../lib/api'
 
 type CollaboratorResponse = {
@@ -24,6 +24,11 @@ type Errors = {
   papel?: string
 }
 
+type Collaborator = CollaboratorResponse['collaborator'] & {
+  fotoUrl: string | null
+  dataEntrada: string | null
+}
+
 const papeis = [
   { value: 'COLABORADOR', label: 'Colaborador' },
   { value: 'INSTRUTOR', label: 'Instrutor' },
@@ -32,6 +37,9 @@ const papeis = [
 ]
 
 export function NewCollaboratorPage({ notify, onBack }: { notify: (message: string) => void; onBack: () => void }) {
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([])
+  const [loadingCollaborators, setLoadingCollaborators] = useState(true)
+  const [listError, setListError] = useState('')
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
   const [telefone, setTelefone] = useState('')
@@ -41,6 +49,15 @@ export function NewCollaboratorPage({ notify, onBack }: { notify: (message: stri
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<CollaboratorResponse | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ nome: '', telefone: '', cargo: '', papel: 'COLABORADOR' })
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  useEffect(() => {
+    api.get<Collaborator[]>('/api/admin/collaborators').then(setCollaborators).catch(error => {
+      setListError(error instanceof ApiError ? error.message : 'Não foi possível carregar os colaboradores.')
+    }).finally(() => setLoadingCollaborators(false))
+  }, [])
 
   function validate() {
     const next: Errors = {}
@@ -74,6 +91,32 @@ export function NewCollaboratorPage({ notify, onBack }: { notify: (message: stri
     setResult(null)
   }
 
+  function startEditing(collaborator: Collaborator) {
+    setEditingId(collaborator.id)
+    setEditForm({ nome: collaborator.nome, telefone: collaborator.telefone ?? '', cargo: collaborator.cargo ?? '', papel: collaborator.papel })
+    setListError('')
+  }
+
+  async function saveCollaborator(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!editingId || !editForm.nome.trim()) {
+      setListError('Informe o nome do colaborador.')
+      return
+    }
+    setSavingEdit(true)
+    setListError('')
+    try {
+      const data = await api.put<{ message: string; collaborator: Collaborator }>(`/api/admin/collaborators/${editingId}`, editForm)
+      setCollaborators(current => current.map(item => item.id === editingId ? data.collaborator : item))
+      setEditingId(null)
+      notify(data.message)
+    } catch (error) {
+      setListError(error instanceof ApiError ? error.message : 'Não foi possível atualizar o colaborador.')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setFormError('')
@@ -89,6 +132,11 @@ export function NewCollaboratorPage({ notify, onBack }: { notify: (message: stri
         papel,
       })
       setResult(data)
+      setCollaborators(current => [{
+        ...data.collaborator,
+        fotoUrl: null,
+        dataEntrada: new Date().toISOString(),
+      }, ...current.filter(item => item.id !== data.collaborator.id)])
       notify(data.message)
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'Não foi possível cadastrar o colaborador.'
@@ -109,6 +157,18 @@ export function NewCollaboratorPage({ notify, onBack }: { notify: (message: stri
         </div>
         <button type="button" className="secondary" onClick={onBack}>Voltar</button>
       </div>
+
+      <section className="panel collaborators-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Equipe da empresa</p>
+            <h3>Colaboradores vinculados</h3>
+          </div>
+          <strong className="collaborator-count">{collaborators.length} {collaborators.length === 1 ? 'pessoa' : 'pessoas'}</strong>
+        </div>
+        {listError && <div className="form-alert" role="alert">{listError}</div>}
+        {loadingCollaborators ? <p className="muted">Carregando colaboradores...</p> : collaborators.length === 0 ? <p className="muted">Nenhum colaborador vinculado à empresa.</p> : <div className="collaborators-list">{collaborators.map(collaborator => editingId === collaborator.id ? <form className="collaborator-edit-row" key={collaborator.id} onSubmit={saveCollaborator}><label className="field"><span>Nome</span><input className="input" value={editForm.nome} onChange={event => setEditForm(current => ({ ...current, nome: event.target.value }))} /></label><label className="field"><span>Telefone</span><input className="input" value={editForm.telefone} onChange={event => setEditForm(current => ({ ...current, telefone: event.target.value }))} /></label><label className="field"><span>Cargo</span><input className="input" value={editForm.cargo} onChange={event => setEditForm(current => ({ ...current, cargo: event.target.value }))} /></label><label className="field"><span>Permissão</span><select className="input" value={editForm.papel} onChange={event => setEditForm(current => ({ ...current, papel: event.target.value }))}>{papeis.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><div className="collaborator-edit-actions"><button className="form-submit" type="submit" disabled={savingEdit}>{savingEdit ? 'Salvando...' : 'Salvar'}</button><button className="secondary" type="button" onClick={() => setEditingId(null)} disabled={savingEdit}>Cancelar</button></div></form> : <div className="collaborator-row" key={collaborator.id}><div className="avatar collaborator-avatar">{collaborator.fotoUrl ? <img className="avatar-image" src={collaborator.fotoUrl} alt="" /> : collaborator.nome.slice(0, 1).toUpperCase()}</div><div className="collaborator-main"><strong>{collaborator.nome}</strong><small>{collaborator.email}</small></div><div><small>Cargo</small><strong>{collaborator.cargo || 'Não informado'}</strong></div><div><small>Permissão</small><strong>{papeis.find(item => item.value === collaborator.papel)?.label ?? collaborator.papel}</strong></div><span className={`status ${collaborator.status.toLowerCase()}`}>{collaborator.status === 'CONVIDADO' ? 'Convite pendente' : 'Ativo'}</span><button className="small-button collaborator-edit-button" type="button" onClick={() => startEditing(collaborator)}>Editar</button></div>)}</div>}
+      </section>
 
       <section className="panel form-panel">
         {result ? (

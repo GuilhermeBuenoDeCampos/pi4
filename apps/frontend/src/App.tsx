@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { navigate, Redirect, usePathname } from './router'
@@ -7,8 +7,10 @@ import { SelectCompanyPage } from './pages/SelectCompanyPage'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { NewCollaboratorPage } from './pages/NewCollaboratorPage'
+import { RegisterCompanyPage } from './pages/RegisterCompanyPage'
+import { api, ApiError } from './lib/api'
 
-type Page = 'landing' | 'dashboard' | 'trainings' | 'course' | 'progress' | 'assessments' | 'certificates' | 'notifications' | 'profile' | 'products' | 'pops' | 'collaborators'
+type Page = 'landing' | 'dashboard' | 'trainings' | 'course' | 'progress' | 'assessments' | 'certificates' | 'notifications' | 'profile' | 'products' | 'pops' | 'history' | 'collaborators'
 
 const managerNavItem: { id: Page; label: string; icon: string } = { id: 'collaborators', label: 'Colaboradores', icon: '☷' }
 
@@ -22,6 +24,7 @@ const navItems: { id: Page; label: string; icon: string }[] = [
   { id: 'profile', label: 'Meu perfil', icon: '♙' },
   { id: 'products', label: 'Fichas técnicas', icon: '▤' },
   { id: 'pops', label: 'POP', icon: '⚙' },
+  { id: 'history', label: 'Histórico de visualizações', icon: '◷' },
 ]
 
 type CourseVideo = { title: string; duration: string; youtubeId: string }
@@ -182,8 +185,9 @@ function PlatformApp({ initialPage = 'landing' }: { initialPage?: Page }) {
         {page === 'certificates' && <Certificates notify={notify} />}
         {page === 'notifications' && <Notifications notify={notify} />}
         {page === 'profile' && <Profile notify={notify} />}
-        {page === 'products' && <Products notify={notify} />}
-        {page === 'pops' && <Pops notify={notify} />}
+        {page === 'products' && <Products notify={notify} canManage={canManage} />}
+        {page === 'pops' && <Pops notify={notify} canManage={canManage} />}
+        {page === 'history' && <ViewHistory />}
         {page === 'collaborators' && <NewCollaboratorPage notify={notify} onBack={() => setPage('dashboard')} />}
       </main>
       {toast && <div className="toast">{toast}</div>}
@@ -192,7 +196,7 @@ function PlatformApp({ initialPage = 'landing' }: { initialPage?: Page }) {
 }
 
 function pageTitle(page: Page, courseTitle?: string) {
-  const titles: Record<Page, string> = { landing: 'Infinity Code', dashboard: 'Dashboard do funcionário', trainings: 'Meus treinamentos', course: courseTitle ?? 'Detalhes do curso', progress: 'Meu progresso', assessments: 'Avaliações', certificates: 'Certificados', notifications: 'Notificações', profile: 'Meu perfil', products: 'Fichas técnicas dos produtos', pops: 'Selecionar POP', collaborators: 'Colaboradores' }
+  const titles: Record<Page, string> = { landing: 'Infinity Code', dashboard: 'Dashboard do funcionário', trainings: 'Meus treinamentos', course: courseTitle ?? 'Detalhes do curso', progress: 'Meu progresso', assessments: 'Avaliações', certificates: 'Certificados', notifications: 'Notificações', profile: 'Meu perfil', products: 'Fichas técnicas dos produtos', pops: 'Selecionar POP', history: 'Histórico de visualizações', collaborators: 'Colaboradores' }
   return titles[page]
 }
 
@@ -201,7 +205,10 @@ function Landing({ go }: { go: (page: Page) => void }) {
     <header className="landing-nav">
       <div className="brand landing-brand">INFINITY<br /><span>CODE</span></div>
       <nav><a href="#solucao">A solução</a><a href="#recursos">Recursos</a><a href="#beneficios">Benefícios</a></nav>
-      <button className="landing-login" onClick={() => go('dashboard')}>Acessar plataforma <span>→</span></button>
+      <div className="landing-auth-actions">
+        <button className="landing-register" type="button" onClick={() => navigate('/register')}>Registrar-se</button>
+        <button className="landing-login" onClick={() => navigate('/login')}>Entrar <span>→</span></button>
+      </div>
     </header>
     <section className="landing-hero">
       <div className="landing-hero-copy">
@@ -250,7 +257,7 @@ function initials(name: string) {
 function Topbar({ title, subtitle }: { title: string; subtitle?: string }) {
   const { user } = useAuth()
   const userName = user?.nome ?? 'João da Silva'
-  return <header className="topbar"><div><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div><div className="user-chip"><span className="avatar">{initials(userName)}</span><strong>{userName}</strong><span className="chevron">⌄</span></div></header>
+  return <header className="topbar"><div><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div><div className="user-chip">{user?.fotoUrl ? <img className="avatar avatar-image" src={user.fotoUrl} alt="" /> : <span className="avatar">{initials(userName)}</span>}<strong>{userName}</strong><span className="chevron">⌄</span></div></header>
 }
 
 function Dashboard({ go, openCourse }: { go: (page: Page) => void; openCourse: (id: string) => void }) {
@@ -438,11 +445,179 @@ function CertificatePreview({ course, date, hours, user, company, onClose, notif
 
 function Notifications({ notify }: { notify: (message: string) => void }) { const items = [['Novo treinamento atribuído', 'Você recebeu um novo treinamento para realizar.', '20 mai, 09:15'], ['Avaliação prática aprovada', 'Parabéns! Você foi aprovado na avaliação prática.', '19 mai, 14:32'], ['Avaliação prática reprovada', 'Você não foi aprovado na avaliação prática.', '18 mai, 11:07'], ['Lembrete de avaliação próxima', 'Você tem uma avaliação agendada em breve.', '17 mai, 16:45']]; return <ListPage eyebrow="Central de avisos" title="Notificações" description="Acompanhe as novidades da sua jornada."><div className="notification-actions"><div className="tabs"><button className="tab active">Todas</button><button className="tab">Não lidas</button><button className="tab">Lidas</button></div><button className="secondary" onClick={() => notify('Todas as notificações foram marcadas como lidas')}>Marcar todas como lidas</button></div><section className="panel notifications-list">{items.map((item, index) => <div className="notification-row" key={item[0]}><span className={index < 3 ? 'unread-dot' : 'read-dot'} /><div><strong>{item[0]}</strong><p>{item[1]}</p></div><time>{item[2]}</time><span className="muted">›</span></div>)}</section></ListPage> }
 
-function Profile({ notify }: { notify: (message: string) => void }) { return <><div className="page-intro"><div><p className="eyebrow">Sua conta</p><h2>Meu perfil</h2><p>Gerencie seus dados pessoais e informações de acesso.</p></div></div><div className="profile-layout"><div className="profile-avatar">JS</div><div className="profile-sections"><section className="panel profile-panel"><div className="section-heading"><h3>Dados pessoais</h3><button className="secondary" onClick={() => notify('Modo de edição ativado')}>Editar perfil</button></div>{[['Nome', 'João da Silva'], ['E-mail', 'joao.silva@email.com'], ['Cargo', 'Auxiliar de Cozinha'], ['Área', 'Cozinha'], ['Data de admissão', '12/02/2024']].map(row => <div className="detail-row" key={row[0]}><span>{row[0]}</span><strong>{row[1]}</strong></div>)}</section><section className="panel profile-panel"><div className="section-heading"><h3>Dados de acesso</h3><button className="secondary" onClick={() => notify('Link para alteração de senha enviado')}>Alterar senha</button></div><div className="detail-row"><span>E-mail de acesso</span><strong>joao.silva@email.com</strong></div><div className="detail-row"><span>Senha</span><strong>••••••••</strong></div></section></div></div></> }
+function Profile({ notify }: { notify: (message: string) => void }) {
+  const { user, activeCompany, updateProfile } = useAuth()
+  const [editing, setEditing] = useState(false)
+  const [nome, setNome] = useState(user?.nome ?? '')
+  const [telefone, setTelefone] = useState(user?.telefone ?? '')
+  const [fotoUrl, setFotoUrl] = useState(user?.fotoUrl ?? null)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const fileInput = useRef<HTMLInputElement>(null)
 
-function Products({ notify }: { notify: (message: string) => void }) { return <ListPage eyebrow="Base de conhecimento" title="Fichas técnicas dos produtos" description="Selecione um produto para consultar sua ficha técnica."><div className="product-grid">{[['Pastel de Carne', '25 unidades', '30 minutos', 'Ativa'], ['Pastel de Queijo', '25 unidades', '25 minutos', 'Ativa'], ['Pastel de Frango com Catupiry', '25 unidades', '35 minutos', 'Em revisão'], ['Coxinha de Frango', '30 unidades', '40 minutos', 'Ativa']].map(item => <article className="product-card" key={item[0]}><div className="product-image">♨</div><div className="product-name"><strong>{item[0]}</strong><small>Categoria · Salgados</small></div><div><small>Rendimento</small><strong>{item[1]}</strong></div><div><small>Tempo de preparo</small><strong>{item[2]}</strong></div><Status value={item[3]} /><button className="small-button ghost" onClick={() => notify(`Ficha de ${item[0]} aberta`)}>Abrir ficha</button></article>)}</div></ListPage> }
+  async function handlePhoto(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/') || file.size > 2 * 1024 * 1024) {
+      setError('Escolha uma imagem de até 2 MB.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => setFotoUrl(String(reader.result))
+    reader.readAsDataURL(file)
+  }
 
-function Pops({ notify }: { notify: (message: string) => void }) { return <ListPage eyebrow="Procedimentos operacionais" title="Selecionar POP" description="Escolha um procedimento para consultar."><div className="pop-list">{[['Higienização de Utensílios', 'Limpeza e desinfecção dos utensílios', '15 minutos', 'Concluído'], ['Higienização das Mãos', 'Lavagem correta antes e durante a produção', '5 minutos', 'Pendente'], ['Organização da Bancada', 'Preparação e organização do posto de trabalho', '10 minutos', 'Em andamento'], ['Armazenamento de Ingredientes', 'Identificação, validade e conservação dos produtos', '20 minutos', 'Pendente']].map(item => <article className="pop-card" key={item[0]}><div className="product-image">✧</div><div className="product-name"><strong>{item[0]}</strong><small>{item[1]}</small></div><div><small>Responsável</small><strong>Auxiliar de cozinha</strong></div><div><small>Tempo estimado</small><strong>{item[2]}</strong></div><Status value={item[3]} /><button className="small-button ghost" onClick={() => notify(`POP ${item[0]} aberto`)}>Abrir POP</button></article>)}</div></ListPage> }
+  async function save() {
+    if (!nome.trim()) {
+      setError('Informe seu nome.')
+      return
+    }
+    if (telefone && telefone.replace(/\D/g, '').length < 10) {
+      setError('Informe um telefone válido com DDD.')
+      return
+    }
+    setSaving(true)
+    setError('')
+    try {
+      await updateProfile({ nome: nome.trim(), telefone: telefone.trim(), fotoUrl })
+      setEditing(false)
+      notify('Perfil atualizado com sucesso.')
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Não foi possível atualizar o perfil.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return <><div className="page-intro"><div><p className="eyebrow">Sua conta</p><h2>Meu perfil</h2><p>Gerencie seus dados pessoais, foto e empresa atual.</p></div></div><div className="profile-layout"><div className="profile-side"><div className="profile-avatar">{fotoUrl ? <img src={fotoUrl} alt={`Foto de ${nome}`} /> : initials(nome || 'Usuário')}</div>{editing && <><input ref={fileInput} className="profile-file-input" type="file" accept="image/*" onChange={handlePhoto} /><button className="secondary profile-photo-button" onClick={() => fileInput.current?.click()}>Alterar foto</button>{fotoUrl && <button className="text-button" onClick={() => setFotoUrl(null)}>Remover foto</button>}</>}</div><div className="profile-sections"><section className="panel profile-panel"><div className="section-heading"><h3>Dados pessoais</h3>{editing ? <div className="profile-actions"><button className="secondary" onClick={() => { setEditing(false); setNome(user?.nome ?? ''); setTelefone(user?.telefone ?? ''); setFotoUrl(user?.fotoUrl ?? null); setError('') }}>Cancelar</button><button className="form-submit" disabled={saving} onClick={save}>{saving ? 'Salvando...' : 'Salvar alterações'}</button></div> : <button className="secondary" onClick={() => setEditing(true)}>Editar perfil</button>}</div>{error && <div className="form-alert">{error}</div>}{editing ? <div className="profile-edit-grid"><label className="field"><span>Nome completo</span><input className="input" value={nome} onChange={event => setNome(event.target.value)} /></label><label className="field"><span>Telefone</span><input className="input" value={telefone} onChange={event => setTelefone(event.target.value)} placeholder="(00) 00000-0000" /></label></div> : <><div className="detail-row"><span>Nome</span><strong>{user?.nome}</strong></div><div className="detail-row"><span>E-mail</span><strong>{user?.email}</strong></div><div className="detail-row"><span>Telefone</span><strong>{user?.telefone || 'Não informado'}</strong></div></>}</section><section className="panel profile-panel"><div className="section-heading"><h3>Empresa atual</h3><span className="status ativo">Vínculo ativo</span></div><div className="company-profile-card"><div className="company-profile-logo">{initials(activeCompany?.nomeFantasia ?? 'IC')}</div><div><strong>{activeCompany?.nomeFantasia ?? 'Nenhuma empresa selecionada'}</strong><small>{activeCompany?.razaoSocial ?? 'Selecione uma empresa para visualizar seus dados'}</small></div></div>{activeCompany && <><div className="detail-row"><span>Cargo</span><strong>{activeCompany.cargo || 'Não informado'}</strong></div><div className="detail-row"><span>Permissão</span><strong>{activeCompany.papel}</strong></div><div className="detail-row"><span>CNPJ</span><strong>{activeCompany.cnpj || 'Não informado'}</strong></div></>}</section><section className="panel profile-panel"><div className="section-heading"><h3>Dados de acesso</h3><button className="secondary" onClick={() => notify('Use “Esqueci minha senha” na tela de login para alterar sua senha.')}>Alterar senha</button></div><div className="detail-row"><span>E-mail de acesso</span><strong>{user?.email}</strong></div><div className="detail-row"><span>Senha</span><strong>••••••••</strong></div></section></div></div></>
+}
+
+type Material = { id: string; titulo: string; descricao: string | null; tipo: 'POP' | 'FICHA_TECNICA'; versao: number; codigo: string | null; categoria: string | null; rendimento: string | null; conteudo: string | null; ingredientes: string | null; montagemPorcionamento: string | null; conservacao: string | null; urlDocumento: string | null }
+
+function Products({ notify, canManage }: { notify: (message: string) => void; canManage: boolean }) {
+  return <MaterialsPage type="FICHA_TECNICA" title="Fichas técnicas dos produtos" eyebrow="Base de conhecimento" description="Selecione um produto para consultar sua ficha técnica." notify={notify} canManage={canManage} />
+}
+
+function Pops({ notify, canManage }: { notify: (message: string) => void; canManage: boolean }) {
+  return <MaterialsPage type="POP" title="Selecionar POP" eyebrow="Procedimentos operacionais" description="Escolha um procedimento para consultar." notify={notify} canManage={canManage} />
+}
+
+type ViewHistoryItem = { id: string; materialId: string; titulo: string; tipo: 'POP' | 'FICHA_TECNICA'; codigo: string | null; categoria: string | null; versao: number; visualizadoEm: string }
+
+function ViewHistory() {
+  const [items, setItems] = useState<ViewHistoryItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api.get<ViewHistoryItem[]>('/api/history/views').then(setItems).catch(error => {
+      setError(error instanceof ApiError ? error.message : 'Não foi possível carregar o histórico.')
+    }).finally(() => setLoading(false))
+  }, [])
+
+  function formatDate(value: string) {
+    return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
+  }
+
+  return <div className="history-page"><div className="page-intro"><div><p className="eyebrow">Acompanhamento pessoal</p><h2>Histórico de visualizações</h2><p>Consulte os POPs e fichas técnicas que você acessou.</p></div></div>{error && <div className="form-alert material-alert">{error}</div>}{loading ? <section className="panel material-empty">Carregando histórico...</section> : items.length === 0 ? <section className="panel material-empty">Você ainda não visualizou nenhum POP ou ficha técnica.</section> : <section className="panel history-panel"><div className="history-table history-head"><span>Documento</span><span>Tipo</span><span>Categoria</span><span>Versão visualizada</span><span>Data e hora</span></div>{items.map(item => <div className="history-table history-row" key={item.id}><div><strong>{item.titulo}</strong><small>{item.codigo || 'Código não informado'}</small></div><span className="history-type">{item.tipo === 'POP' ? 'POP' : 'Ficha técnica'}</span><span>{item.categoria || 'Não informada'}</span><strong>v{item.versao}</strong><time dateTime={item.visualizadoEm}>{formatDate(item.visualizadoEm)}</time></div>)}</section>}</div>
+}
+
+function MaterialsPage({ type, title, eyebrow, description, notify, canManage }: { type: 'POP' | 'FICHA_TECNICA'; title: string; eyebrow: string; description: string; notify: (message: string) => void; canManage: boolean }) {
+  const [materials, setMaterials] = useState<Material[]>([])
+  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null)
+  const [editingMaterial, setEditingMaterial] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    api.get<Material[]>('/api/materials').then(data => {
+      if (active) setMaterials(data.filter(item => item.tipo === type))
+    }).catch(error => {
+      if (active) setError(error instanceof ApiError ? error.message : 'Não foi possível carregar os materiais.')
+    }).finally(() => active && setLoading(false))
+    return () => { active = false }
+  }, [type])
+
+  function addMaterial(material: Material) {
+    setMaterials(current => [material, ...current])
+    setShowForm(false)
+    notify(`${type === 'POP' ? 'POP' : 'Ficha técnica'} criado com sucesso.`)
+  }
+
+  function updateMaterial(material: Material) {
+    setMaterials(current => current.map(item => item.id === material.id ? material : item))
+    setSelectedMaterial(material)
+    setEditingMaterial(false)
+    notify(`${type === 'POP' ? 'POP' : 'Ficha técnica'} atualizado com sucesso.`)
+  }
+
+  async function openMaterial(material: Material) {
+    try {
+      await api.post(`/api/history/views/${material.id}`, {})
+      setSelectedMaterial(material)
+    } catch (error) {
+      setError(error instanceof ApiError ? error.message : 'Não foi possível registrar a visualização.')
+    }
+  }
+
+  if (selectedMaterial) {
+    return editingMaterial
+      ? <MaterialForm type={type} initialMaterial={selectedMaterial} onCreated={updateMaterial} onError={setError} onCancel={() => setEditingMaterial(false)} />
+      : <MaterialViewer material={selectedMaterial} type={type} canManage={canManage} onEdit={() => setEditingMaterial(true)} onBack={() => setSelectedMaterial(null)} />
+  }
+
+  return <><div className="page-intro"><div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>{description}</p></div>{canManage && <button className="primary material-create-button" onClick={() => setShowForm(current => !current)}>{showForm ? 'Fechar formulário' : `Criar ${type === 'POP' ? 'POP' : 'ficha técnica'}`} <span>+</span></button>}</div>{showForm && <MaterialForm type={type} onCreated={addMaterial} onError={setError} />}{error && <div className="form-alert material-alert">{error}</div>}{loading ? <section className="panel material-empty">Carregando materiais...</section> : <div className={type === 'POP' ? 'pop-list' : 'product-grid'}>{materials.length ? materials.map(material => <MaterialCard key={material.id} material={material} type={type} onOpen={openMaterial} />) : <section className="panel material-empty">Nenhum {type === 'POP' ? 'POP' : 'ficha técnica'} cadastrado para esta empresa.</section>}</div>}</>
+}
+
+function MaterialForm({ type, initialMaterial, onCreated, onError, onCancel }: { type: 'POP' | 'FICHA_TECNICA'; initialMaterial?: Material; onCreated: (material: Material) => void; onError: (message: string) => void; onCancel?: () => void }) {
+  const [form, setForm] = useState({ titulo: initialMaterial?.titulo ?? '', codigo: initialMaterial?.codigo ?? '', categoria: initialMaterial?.categoria ?? '', rendimento: initialMaterial?.rendimento ?? '', descricao: initialMaterial?.descricao ?? '', conteudo: initialMaterial?.conteudo ?? '', ingredientes: initialMaterial?.ingredientes ?? '', montagemPorcionamento: initialMaterial?.montagemPorcionamento ?? '', conservacao: initialMaterial?.conservacao ?? '', urlDocumento: initialMaterial?.urlDocumento ?? '' })
+  const [saving, setSaving] = useState(false)
+  const update = (key: keyof typeof form, value: string) => setForm(current => ({ ...current, [key]: value }))
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!form.titulo.trim() || !form.codigo.trim() || !form.categoria.trim() || !form.conteudo.trim()) {
+      onError('Informe título, código, categoria e conteúdo.')
+      return
+    }
+    setSaving(true)
+    try {
+      const data = initialMaterial
+        ? await api.put<{ material: Material }>(`/api/materials/${initialMaterial.id}`, { ...form })
+        : await api.post<{ material: Material }>('/api/materials', { ...form, tipo: type })
+      onCreated(data.material)
+    } catch (error) {
+      onError(error instanceof ApiError ? error.message : 'Não foi possível criar o material.')
+    } finally { setSaving(false) }
+  }
+  return <form className="panel material-form" onSubmit={submit}><div className="section-heading"><div><p className="eyebrow">Área administrativa</p><h3>{initialMaterial ? 'Editar' : 'Novo'} {type === 'POP' ? 'POP' : 'ficha técnica'}</h3></div></div><div className="material-form-grid"><label className="field"><span>Título</span><input className="input" value={form.titulo} onChange={event => update('titulo', event.target.value)} /></label><label className="field"><span>Código</span><input className="input" value={form.codigo} onChange={event => update('codigo', event.target.value)} /></label><label className="field"><span>Categoria</span><input className="input" value={form.categoria} onChange={event => update('categoria', event.target.value)} placeholder={type === 'POP' ? 'Ex.: Higienização' : 'Ex.: Salgados'} /></label>{type === 'FICHA_TECNICA' && <label className="field"><span>Rendimento</span><input className="input" value={form.rendimento} onChange={event => update('rendimento', event.target.value)} placeholder="Ex.: 25 unidades" /></label>}<label className="field field-wide"><span>Descrição</span><input className="input" value={form.descricao} onChange={event => update('descricao', event.target.value)} /></label><label className="field field-wide"><span>{type === 'POP' ? 'Procedimento' : 'Especificações'}</span><textarea className="input material-textarea" value={form.conteudo} onChange={event => update('conteudo', event.target.value)} rows={5} /></label>{type === 'FICHA_TECNICA' && <><label className="field field-wide"><span>Ingredientes</span><textarea className="input material-textarea" value={form.ingredientes} onChange={event => update('ingredientes', event.target.value)} rows={4} placeholder="Um ingrediente por linha" /></label><label className="field"><span>Montagem e porcionamento</span><textarea className="input material-textarea" value={form.montagemPorcionamento} onChange={event => update('montagemPorcionamento', event.target.value)} rows={4} /></label><label className="field"><span>Conservação</span><textarea className="input material-textarea" value={form.conservacao} onChange={event => update('conservacao', event.target.value)} rows={4} /></label></>}<label className="field field-wide"><span>Link do documento <small>(opcional)</small></span><input className="input" type="url" value={form.urlDocumento} onChange={event => update('urlDocumento', event.target.value)} placeholder="https://..." /></label></div><div className="form-actions">{onCancel && <button className="secondary" type="button" onClick={onCancel}>Cancelar</button>}<button className="form-submit" type="submit" disabled={saving}>{saving ? 'Salvando...' : initialMaterial ? 'Salvar alterações' : 'Salvar material'} <span>→</span></button></div></form>
+}
+
+function MaterialCard({ material, type, onOpen }: { material: Material; type: 'POP' | 'FICHA_TECNICA'; onOpen: (material: Material) => void }) {
+  return <article className={type === 'POP' ? 'pop-card' : 'product-card'}><div className="product-image">{type === 'POP' ? '✧' : '♨'}</div><div className="product-name"><strong>{material.titulo}</strong><small>{material.codigo} · {material.descricao || 'Sem descrição'}</small></div><div><small>Versão</small><strong>v{material.versao}</strong></div><div><small>Conteúdo</small><strong>{material.conteudo ? `${material.conteudo.slice(0, 38)}${material.conteudo.length > 38 ? '...' : ''}` : '—'}</strong></div><Status value="Ativa" /><button className="small-button ghost" onClick={() => onOpen(material)}>{material.urlDocumento ? 'Abrir documento' : 'Ver detalhes'}</button></article>
+}
+
+function MaterialViewer({ material, type, canManage, onEdit, onBack }: { material: Material; type: 'POP' | 'FICHA_TECNICA'; canManage: boolean; onEdit: () => void; onBack: () => void }) {
+  const isPop = type === 'POP'
+  return <div className="material-detail" aria-labelledby="material-detail-title">
+    <div className="material-detail-header">
+      <div><p className="eyebrow">{isPop ? 'Procedimento operacional padrão' : 'Ficha técnica do produto'}</p><h2 id="material-detail-title">{material.titulo}</h2><Status value="Ativa" /></div>
+      <div className="material-detail-actions">{canManage && <button className="secondary" onClick={onEdit}>Editar {isPop ? 'POP' : 'ficha'}</button>}{material.urlDocumento && <a className="secondary" href={material.urlDocumento} target="_blank" rel="noreferrer">Abrir documento <span>↗</span></a>}<button className="primary" onClick={onBack}>← Voltar para {isPop ? 'POPs' : 'produtos'}</button></div>
+    </div>
+    <section className="panel material-info-panel"><h3>Informações gerais</h3><div className="material-info-grid">{!isPop && <MaterialInfo icon="◉" label="Rendimento" value={material.rendimento || 'Não informado'} />}<MaterialInfo icon="⌑" label="Código" value={material.codigo || 'Não informado'} /><MaterialInfo icon="◇" label="Categoria" value={material.categoria || 'Não informada'} /><MaterialInfo icon="◷" label="Versão" value={`v${material.versao}`} /><MaterialInfo icon="▣" label="Tipo" value={isPop ? 'POP' : 'Ficha técnica'} /><MaterialInfo icon="✓" label="Status" value="Ativa" /></div></section>
+    <div className="material-detail-grid">
+      <section className="panel material-detail-card"><h3>{isPop ? 'Objetivo do procedimento' : 'Descrição do produto'}</h3><div className="material-detail-icon">{isPop ? '◎' : '♨'}</div><p>{material.descricao || 'Nenhuma descrição informada.'}</p></section>
+      <section className="panel material-detail-card"><h3>{isPop ? 'Modo de fazer' : 'Especificações técnicas'}</h3><div className="material-detail-icon">{isPop ? '☷' : '≡'}</div><div className="material-detail-content">{material.conteudo || 'Nenhum conteúdo informado.'}</div></section>
+      {!isPop && <><section className="panel material-detail-card"><h3>Ingredientes</h3><div className="material-detail-icon">♧</div><div className="material-detail-content">{material.ingredientes || 'Nenhum ingrediente informado.'}</div></section><section className="panel material-detail-card"><h3>Montagem e porcionamento</h3><div className="material-detail-icon">⚖</div><div className="material-detail-content">{material.montagemPorcionamento || 'Nenhuma informação de montagem e porcionamento.'}</div></section><section className="panel material-detail-card"><h3>Conservação</h3><div className="material-detail-icon">▣</div><div className="material-detail-content">{material.conservacao || 'Nenhuma informação de conservação.'}</div></section></>}
+    </div>
+    <section className="panel material-observations"><div className="material-detail-icon">✎</div><div><h3>Observações</h3><p>{material.urlDocumento ? 'Consulte também o documento completo para mais informações.' : 'Nenhuma observação adicional informada.'}</p></div></section>
+  </div>
+}
+
+function MaterialInfo({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return <div className="material-info-item"><span className="material-info-icon">{icon}</span><div><small>{label}</small><strong>{value}</strong></div></div>
+}
 
 function ListPage({ eyebrow, title, description, tabs, children }: { eyebrow: string; title: string; description: string; tabs?: string[]; children: React.ReactNode }) { return <><div className="page-intro"><div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>{description}</p></div></div>{tabs && <div className="tabs">{tabs.map((tab, index) => <button className={index === 0 ? 'tab active' : 'tab'} key={tab}>{tab}</button>)}</div>}{children}</> }
 
@@ -459,6 +634,10 @@ function AppRouter() {
   if (pathname === '/login') {
     if (user) return <Redirect to={activeCompany ? '/dashboard' : '/select-company'} />
     return <LoginPage />
+  }
+  if (pathname === '/register') {
+    if (user) return <Redirect to={activeCompany ? '/dashboard' : '/select-company'} />
+    return <RegisterCompanyPage />
   }
 
   if (pathname === '/forgot-password') return <ForgotPasswordPage />

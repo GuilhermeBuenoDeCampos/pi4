@@ -8,6 +8,7 @@ import {
   type ApiUser,
   type LoginResponse,
   type MeResponse,
+  type UpdateProfileResponse,
 } from '../lib/api'
 
 type LoginDestination = 'dashboard' | 'select-company'
@@ -20,6 +21,7 @@ type AuthContextValue = {
   canManage: boolean
   login: (email: string, senha: string) => Promise<LoginDestination>
   selectCompany: (empresaId: string) => Promise<ApiCompany>
+  updateProfile: (data: { nome: string; telefone: string; fotoUrl?: string | null }) => Promise<ApiUser>
   logout: () => Promise<void>
 }
 
@@ -96,6 +98,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setActiveCompany(null)
   }, [])
 
+  const updateProfile = useCallback(async (data: { nome: string; telefone: string; fotoUrl?: string | null }) => {
+    const response = await api.put<UpdateProfileResponse>('/api/auth/me', data)
+    setUser(response.user)
+    return response.user
+  }, [])
+
   const value = useMemo<AuthContextValue>(() => ({
     user,
     companies,
@@ -104,8 +112,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     canManage: activeCompany?.papel === 'ADMIN' || activeCompany?.papel === 'GESTOR',
     login,
     selectCompany,
+    updateProfile,
     logout,
-  }), [user, companies, activeCompany, loading, login, selectCompany, logout])
+  }), [user, companies, activeCompany, loading, login, selectCompany, updateProfile, logout])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

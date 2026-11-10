@@ -7,6 +7,7 @@ export type ApiUser = {
   nome: string
   email: string
   telefone: string | null
+  fotoUrl: string | null
 }
 
 export type ApiCompany = {
@@ -31,6 +32,11 @@ export type MeResponse = {
   user: ApiUser
   companies: ApiCompany[]
   activeCompany: ApiCompany | null
+}
+
+export type UpdateProfileResponse = {
+  user: ApiUser
+  message: string
 }
 
 export class ApiError extends Error {
@@ -118,4 +124,5 @@ async function request<T>(path: string, options: RequestInit = {}, canRetry = tr
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body: unknown) => request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  put: <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
 }

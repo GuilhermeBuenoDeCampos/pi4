@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS usuario (
   nome VARCHAR(150) NOT NULL,
   email VARCHAR(255) NOT NULL,
   telefone VARCHAR(20) NULL,
+  foto_url LONGTEXT NULL,
   senha_hash VARCHAR(255) NOT NULL,
   ativo BOOLEAN NOT NULL DEFAULT TRUE,
   criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -94,6 +95,19 @@ CREATE TABLE IF NOT EXISTS material (
   CONSTRAINT fk_material_empresa FOREIGN KEY (empresa_id) REFERENCES empresa(id)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS historico_visualizacao (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  usuario_id BIGINT UNSIGNED NOT NULL,
+  empresa_id BIGINT UNSIGNED NOT NULL,
+  material_id BIGINT UNSIGNED NOT NULL,
+  versao INT UNSIGNED NOT NULL,
+  visualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_historico_usuario_empresa (usuario_id, empresa_id, visualizado_em),
+  CONSTRAINT fk_historico_usuario FOREIGN KEY (usuario_id) REFERENCES usuario(id) ON DELETE CASCADE,
+  CONSTRAINT fk_historico_empresa FOREIGN KEY (empresa_id) REFERENCES empresa(id) ON DELETE CASCADE,
+  CONSTRAINT fk_historico_material FOREIGN KEY (material_id) REFERENCES material(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS video (
   material_id BIGINT UNSIGNED PRIMARY KEY,
   url VARCHAR(2048) NOT NULL,
@@ -104,6 +118,7 @@ CREATE TABLE IF NOT EXISTS video (
 CREATE TABLE IF NOT EXISTS pop (
   material_id BIGINT UNSIGNED PRIMARY KEY,
   codigo VARCHAR(60) NOT NULL,
+  categoria VARCHAR(100) NOT NULL,
   procedimento LONGTEXT NULL,
   url_documento VARCHAR(2048) NULL,
   CONSTRAINT fk_pop_material FOREIGN KEY (material_id) REFERENCES material(id) ON DELETE CASCADE
@@ -112,7 +127,12 @@ CREATE TABLE IF NOT EXISTS pop (
 CREATE TABLE IF NOT EXISTS ficha_tecnica (
   material_id BIGINT UNSIGNED PRIMARY KEY,
   codigo VARCHAR(60) NOT NULL,
+  categoria VARCHAR(100) NOT NULL,
+  rendimento VARCHAR(120) NULL,
   especificacoes LONGTEXT NULL,
+  ingredientes LONGTEXT NULL,
+  montagem_porcionamento LONGTEXT NULL,
+  conservacao LONGTEXT NULL,
   url_documento VARCHAR(2048) NULL,
   CONSTRAINT fk_ficha_material FOREIGN KEY (material_id) REFERENCES material(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;

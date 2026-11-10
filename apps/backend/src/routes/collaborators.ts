@@ -15,6 +15,40 @@ function normalizeEmail(value: unknown) {
   return String(value ?? '').trim().toLowerCase()
 }
 
+router.get(
+  '/',
+  requireAuth,
+  requireCompany,
+  requireRole(['ADMIN', 'GESTOR']),
+  asyncHandler(async (request, response) => {
+    const vinculos = await EmpresaUsuario.findAll({
+      where: { empresaId: BigInt(request.auth!.empresaId!), status: ['ATIVO', 'CONVIDADO'] },
+      include: [
+        { model: Usuario, as: 'usuario', attributes: ['id', 'nome', 'email', 'telefone', 'fotoUrl'] },
+        { model: Cargo, as: 'cargo', attributes: ['id', 'nome'] },
+      ],
+      order: [['criadoEm', 'DESC']],
+    })
+
+    response.json(vinculos.map(vinculo => {
+      const usuario = vinculo.get('usuario') as Usuario
+      const cargo = vinculo.get('cargo') as Cargo | null
+      return {
+        id: String(vinculo.id),
+        usuarioId: String(usuario.id),
+        nome: usuario.nome,
+        email: usuario.email,
+        telefone: usuario.telefone,
+        fotoUrl: usuario.fotoUrl,
+        cargo: cargo?.nome ?? null,
+        papel: vinculo.papel,
+        status: vinculo.status,
+        dataEntrada: vinculo.dataEntrada,
+      }
+    }))
+  }),
+)
+
 router.post(
   '/',
   requireAuth,
@@ -121,6 +155,72 @@ router.post(
         cargo: cargoNome || null,
         papel: vinculo.papel,
         status: vinculo.status,
+      },
+    })
+  }),
+)
+
+router.put(
+  '/:id',
+  requireAuth,
+  requireCompany,
+  requireRole(['ADMIN', 'GESTOR']),
+  asyncHandler(async (request, response) => {
+    const vinculoId = typeof request.params.id === 'string' ? request.params.id : ''
+    if (!/^\d+$/.test(vinculoId)) {
+      response.status(400).json({ message: 'Identificador de colaborador inválido.' })
+      return
+    }
+
+    const empresaId = BigInt(request.auth!.empresaId!)
+    const vinculo = await EmpresaUsuario.findOne({
+      where: { id: BigInt(vinculoId), empresaId },
+      include: [{ model: Usuario, as: 'usuario' }],
+    })
+    if (!vinculo) {
+      response.status(404).json({ message: 'Colaborador não encontrado.' })
+      return
+    }
+
+    const nome = String(request.body?.nome ?? '').trim()
+    const telefone = String(request.body?.telefone ?? '').trim() || null
+    const cargoNome = String(request.body?.cargo ?? '').trim()
+    const papel = String(request.body?.papel ?? '').toUpperCase() as Papel
+    if (!nome) {
+      response.status(400).json({ message: 'Informe o nome do colaborador.' })
+      return
+    }
+    if (!papeis.includes(papel)) {
+      response.status(400).json({ message: 'Permissão inválida.' })
+      return
+    }
+
+    const usuario = vinculo.get('usuario') as Usuario
+    let cargoId: bigint | null = null
+    if (cargoNome) {
+      const [cargo] = await Cargo.findOrCreate({
+        where: { empresaId, nome: cargoNome },
+        defaults: { empresaId, nome: cargoNome, descricao: null },
+      })
+      cargoId = cargo.id
+    }
+
+    await usuario.update({ nome, telefone })
+    await vinculo.update({ cargoId, papel })
+
+    response.json({
+      message: 'Colaborador atualizado com sucesso.',
+      collaborator: {
+        id: String(vinculo.id),
+        usuarioId: String(usuario.id),
+        nome: usuario.nome,
+        email: usuario.email,
+        telefone: usuario.telefone,
+        fotoUrl: usuario.fotoUrl,
+        cargo: cargoNome || null,
+        papel: vinculo.papel,
+        status: vinculo.status,
+        dataEntrada: vinculo.dataEntrada,
       },
     })
   }),
