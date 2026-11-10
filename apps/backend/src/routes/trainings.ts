@@ -46,16 +46,29 @@ async function loadTrainingMaterials(trilhaId: bigint, empresaId: bigint) {
     .filter((material): material is Material => material !== null)
 }
 
+async function getOrCreateAssignment(trilhaId: bigint, empresaId: bigint, usuarioId: bigint) {
+  const membership = await EmpresaUsuario.findOne({ where: { empresaId, usuarioId, status: 'ATIVO' } })
+  if (!membership) return null
+
+  const [assignment] = await Atribuicao.findOrCreate({
+    where: { empresaId, empresaUsuarioId: membership.id, trilhaId },
+    defaults: {
+      empresaId,
+      empresaUsuarioId: membership.id,
+      trilhaId,
+      atribuidoPor: null,
+      prazo: null,
+      status: 'PENDENTE',
+    },
+  })
+  return assignment
+}
+
 async function saveLessonProgress(trilhaId: bigint, materialId: bigint, empresaId: bigint, usuarioId: bigint, status: 'EM_ANDAMENTO' | 'CONCLUIDO') {
   const link = await TrilhaMaterial.findOne({ where: { trilhaId, materialId, empresaId } })
   if (!link) return
 
-  const membership = await EmpresaUsuario.findOne({ where: { empresaId, usuarioId, status: 'ATIVO' } })
-  if (!membership) return
-
-  const assignment = await Atribuicao.findOne({
-    where: { empresaId, empresaUsuarioId: membership.id, trilhaId, status: { [Op.in]: ['PENDENTE', 'EM_ANDAMENTO', 'CONCLUIDA'] } },
-  })
+  const assignment = await getOrCreateAssignment(trilhaId, empresaId, usuarioId)
   if (!assignment) return
 
   const [progress] = await Progresso.findOrCreate({
@@ -82,12 +95,7 @@ async function saveLessonProgress(trilhaId: bigint, materialId: bigint, empresaI
 async function getTrainingProgress(trilhaId: bigint, empresaId: bigint, usuarioId: bigint, totalLessons: number) {
   if (!totalLessons) return { progress: 0, status: 'Pendente' }
 
-  const membership = await EmpresaUsuario.findOne({ where: { empresaId, usuarioId, status: 'ATIVO' } })
-  if (!membership) return { progress: 0, status: 'Pendente' }
-
-  const assignment = await Atribuicao.findOne({
-    where: { empresaId, empresaUsuarioId: membership.id, trilhaId, status: { [Op.in]: ['PENDENTE', 'EM_ANDAMENTO', 'CONCLUIDA'] } },
-  })
+  const assignment = await getOrCreateAssignment(trilhaId, empresaId, usuarioId)
   if (!assignment) return { progress: 0, status: 'Pendente' }
 
   const completedLessons = await Progresso.count({
