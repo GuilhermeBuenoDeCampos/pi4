@@ -18,8 +18,17 @@ function getVideo(material: Material) {
   return material.get('video') as Video | null
 }
 
-function serializeTraining(training: Trilha) {
+function orderedMaterials(training: Trilha) {
   const materials = (training.get('materiais') as (Material & { Video?: Video | null })[] | undefined) ?? []
+  return materials.sort((left, right) => {
+    const leftOrder = Number((left as Material & { TrilhaMaterial?: { ordem?: number } }).TrilhaMaterial?.ordem ?? 0)
+    const rightOrder = Number((right as Material & { TrilhaMaterial?: { ordem?: number } }).TrilhaMaterial?.ordem ?? 0)
+    return leftOrder - rightOrder
+  })
+}
+
+function serializeTraining(training: Trilha) {
+  const materials = orderedMaterials(training)
   return {
     id: String(training.id),
     title: training.titulo,
@@ -156,7 +165,11 @@ router.post('/:id/evaluate', requireAuth, requireCompany, asyncHandler(async (re
       through: { attributes: ['ordem'] },
     }],
   })
-  const materials = (training?.get('materiais') as (Material & { Video?: Video | null })[] | undefined) ?? []
+  if (!training) {
+    response.status(404).json({ message: 'Treinamento não encontrado.' })
+    return
+  }
+  const materials = orderedMaterials(training)
   const material = (Number.isInteger(requestedVideoIndex) && requestedVideoIndex >= 0
     ? materials[requestedVideoIndex]
     : undefined) ?? materials.find(item => {
