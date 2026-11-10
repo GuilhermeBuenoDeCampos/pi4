@@ -106,6 +106,43 @@ try {
       CONSTRAINT fk_historico_material FOREIGN KEY (material_id) REFERENCES material(id) ON DELETE CASCADE
     ) ENGINE=InnoDB
   `)
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS avaliacao_quiz (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      empresa_id BIGINT UNSIGNED NOT NULL,
+      usuario_id BIGINT UNSIGNED NOT NULL,
+      trilha_id VARCHAR(120) NULL,
+      trilha_titulo VARCHAR(200) NOT NULL,
+      pontuacao TINYINT UNSIGNED NOT NULL,
+      acertos TINYINT UNSIGNED NOT NULL,
+      total TINYINT UNSIGNED NOT NULL,
+      aprovado BOOLEAN NOT NULL DEFAULT FALSE,
+      respostas JSON NULL,
+      criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_aval_empresa_usuario (empresa_id, usuario_id, criado_em),
+      CONSTRAINT fk_aval_empresa FOREIGN KEY (empresa_id) REFERENCES empresa(id) ON DELETE CASCADE,
+      CONSTRAINT fk_aval_usuario FOREIGN KEY (usuario_id) REFERENCES usuario(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB
+  `)
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS avaliacao_pratica (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      empresa_id BIGINT UNSIGNED NOT NULL,
+      usuario_id BIGINT UNSIGNED NOT NULL,
+      avaliador_id BIGINT UNSIGNED NOT NULL,
+      trilha_id VARCHAR(120) NULL,
+      trilha_titulo VARCHAR(200) NOT NULL,
+      pontuacao TINYINT UNSIGNED NOT NULL,
+      aprovado BOOLEAN NOT NULL DEFAULT FALSE,
+      itens JSON NOT NULL,
+      observacoes LONGTEXT NULL,
+      criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_aval_pratica_empresa_usuario (empresa_id, usuario_id, criado_em),
+      CONSTRAINT fk_aval_pratica_empresa FOREIGN KEY (empresa_id) REFERENCES empresa(id) ON DELETE CASCADE,
+      CONSTRAINT fk_aval_pratica_usuario FOREIGN KEY (usuario_id) REFERENCES usuario(id) ON DELETE CASCADE,
+      CONSTRAINT fk_aval_pratica_avaliador FOREIGN KEY (avaliador_id) REFERENCES usuario(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB
+  `)
   await connection.end()
   console.log('Schema onboarding_corporativo aplicado com sucesso.')
 } catch (error) {

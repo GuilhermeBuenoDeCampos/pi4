@@ -1,5 +1,7 @@
 import { Atribuicao } from './Atribuicao.js'
 import { Avaliacao } from './Avaliacao.js'
+import { AvaliacaoPratica } from './AvaliacaoPratica.js'
+import { AvaliacaoQuiz } from './AvaliacaoQuiz.js'
 import { Cargo } from './Cargo.js'
 import { Empresa } from './Empresa.js'
 import { EmpresaUsuario } from './EmpresaUsuario.js'
@@ -46,8 +48,19 @@ Progresso.belongsTo(Atribuicao, { foreignKey: 'atribuicaoId', as: 'atribuicao' }
 Progresso.belongsTo(TrilhaMaterial, { foreignKey: 'trilhaMaterialId', as: 'item' })
 Usuario.hasMany(TokenSenha, { foreignKey: 'usuarioId', as: 'tokensSenha' })
 TokenSenha.belongsTo(Usuario, { foreignKey: 'usuarioId', as: 'usuario' })
+Empresa.hasMany(AvaliacaoQuiz, { foreignKey: 'empresaId', as: 'avaliacoesQuiz' })
+AvaliacaoQuiz.belongsTo(Empresa, { foreignKey: 'empresaId', as: 'empresa' })
+Usuario.hasMany(AvaliacaoQuiz, { foreignKey: 'usuarioId', as: 'avaliacoesQuiz' })
+AvaliacaoQuiz.belongsTo(Usuario, { foreignKey: 'usuarioId', as: 'usuario' })
+Empresa.hasMany(AvaliacaoPratica, { foreignKey: 'empresaId', as: 'avaliacoesPraticas' })
+AvaliacaoPratica.belongsTo(Empresa, { foreignKey: 'empresaId', as: 'empresa' })
+Usuario.hasMany(AvaliacaoPratica, { foreignKey: 'usuarioId', as: 'avaliacoesPraticasRecebidas' })
+AvaliacaoPratica.belongsTo(Usuario, { foreignKey: 'usuarioId', as: 'usuario' })
+Usuario.hasMany(AvaliacaoPratica, { foreignKey: 'avaliadorId', as: 'avaliacoesPraticasRealizadas' })
+AvaliacaoPratica.belongsTo(Usuario, { foreignKey: 'avaliadorId', as: 'avaliador' })
 
 export {
   Atribuicao, Cargo, Empresa, EmpresaUsuario, FichaTecnica, HistoricoVisualizacao, Material,
   Avaliacao, Pop, Progresso, TokenSenha, Trilha, TrilhaMaterial, Usuario, Video,
+  AvaliacaoPratica, AvaliacaoQuiz,
 }

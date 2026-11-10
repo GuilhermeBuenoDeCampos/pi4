@@ -217,6 +217,41 @@ CREATE TABLE IF NOT EXISTS avaliacao (
   KEY idx_avaliacao_usuario (usuario_id, empresa_id, criado_em)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS avaliacao_quiz (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  empresa_id BIGINT UNSIGNED NOT NULL,
+  usuario_id BIGINT UNSIGNED NOT NULL,
+  trilha_id VARCHAR(120) NULL,
+  trilha_titulo VARCHAR(200) NOT NULL,
+  pontuacao TINYINT UNSIGNED NOT NULL,
+  acertos TINYINT UNSIGNED NOT NULL,
+  total TINYINT UNSIGNED NOT NULL,
+  aprovado BOOLEAN NOT NULL DEFAULT FALSE,
+  respostas JSON NULL,
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_aval_empresa_usuario (empresa_id, usuario_id, criado_em),
+  CONSTRAINT fk_aval_empresa FOREIGN KEY (empresa_id) REFERENCES empresa(id) ON DELETE CASCADE,
+  CONSTRAINT fk_aval_usuario FOREIGN KEY (usuario_id) REFERENCES usuario(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS avaliacao_pratica (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  empresa_id BIGINT UNSIGNED NOT NULL,
+  usuario_id BIGINT UNSIGNED NOT NULL,
+  avaliador_id BIGINT UNSIGNED NOT NULL,
+  trilha_id VARCHAR(120) NULL,
+  trilha_titulo VARCHAR(200) NOT NULL,
+  pontuacao TINYINT UNSIGNED NOT NULL,
+  aprovado BOOLEAN NOT NULL DEFAULT FALSE,
+  itens JSON NOT NULL,
+  observacoes LONGTEXT NULL,
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_aval_pratica_empresa_usuario (empresa_id, usuario_id, criado_em),
+  CONSTRAINT fk_aval_pratica_empresa FOREIGN KEY (empresa_id) REFERENCES empresa(id) ON DELETE CASCADE,
+  CONSTRAINT fk_aval_pratica_usuario FOREIGN KEY (usuario_id) REFERENCES usuario(id) ON DELETE CASCADE,
+  CONSTRAINT fk_aval_pratica_avaliador FOREIGN KEY (avaliador_id) REFERENCES usuario(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- Regras de negócio para validar na aplicação ou via triggers:
 -- 1. video/pop/ficha_tecnica deve corresponder a material.tipo e ocorrer em apenas uma subtabela.
 -- 2. progresso.trilha_material_id deve pertencer à mesma trilha que atribuicao.trilha_id.
