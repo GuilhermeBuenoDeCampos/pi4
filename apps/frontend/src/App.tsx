@@ -27,7 +27,7 @@ const navItems: { id: Page; label: string; icon: string }[] = [
   { id: 'history', label: 'Histórico de visualizações', icon: '◷' },
 ]
 
-type CourseVideo = { title: string; duration: string; youtubeId: string; transcript?: string }
+type CourseVideo = { materialId?: string; title: string; duration: string; youtubeId: string; transcript?: string }
 type CoursePop = { title: string; description: string }
 type CourseFicha = { title: string; category: string }
 
@@ -523,7 +523,7 @@ function KnowledgeRecorder({ trainingId, video }: { trainingId: string; video: C
       setEvaluating(true)
       setError('')
       try {
-        const response = await api.post<{ evaluation: TrainingEvaluation }>(`/api/trainings/${trainingId}/evaluate`, { youtubeId: video.youtubeId, videoTitle: video.title, transcript })
+        const response = await api.post<{ evaluation: TrainingEvaluation }>(`/api/trainings/${trainingId}/evaluate`, { materialId: video.materialId, youtubeId: video.youtubeId, videoTitle: video.title, transcript })
         setEvaluation(response.evaluation)
       } catch (evaluationError) {
         setError(evaluationError instanceof ApiError ? evaluationError.message : 'Não foi possível avaliar sua resposta.')

@@ -32,6 +32,7 @@ function serializeTraining(training: Trilha) {
     videos: materials.map(material => {
       const video = getVideo(material)
       return {
+        materialId: String(material.id),
         title: material.titulo,
         duration: video?.duracaoSegundos ? `${Math.floor(video.duracaoSegundos / 60)}:${String(video.duracaoSegundos % 60).padStart(2, '0')}` : '',
         youtubeId: youtubeId(video?.url),
@@ -132,10 +133,11 @@ router.post('/', requireAuth, requireCompany, requireRole([...creatorRoles]), as
 
 router.post('/:id/evaluate', requireAuth, requireCompany, asyncHandler(async (request, response) => {
   const id = typeof request.params.id === 'string' ? request.params.id : ''
+  const requestedMaterialId = String(request.body?.materialId ?? '').trim()
   const requestedYoutubeId = youtubeId(request.body?.youtubeId)
   const requestedVideoTitle = String(request.body?.videoTitle ?? '').trim().toLocaleLowerCase()
   const collaboratorTranscript = String(request.body?.transcript ?? '').trim()
-  if (!/^\d+$/.test(id) || !requestedYoutubeId || !collaboratorTranscript) {
+  if (!/^\d+$/.test(id) || (!/^\d+$/.test(requestedMaterialId) && !requestedYoutubeId) || !collaboratorTranscript) {
     response.status(400).json({ message: 'Informe a aula e a transcrição da sua resposta.' })
     return
   }
@@ -155,7 +157,8 @@ router.post('/:id/evaluate', requireAuth, requireCompany, asyncHandler(async (re
   const materials = (training?.get('materiais') as (Material & { Video?: Video | null })[] | undefined) ?? []
   const material = materials.find(item => {
     const video = getVideo(item)
-    return youtubeId(video?.url) === requestedYoutubeId
+    return (requestedMaterialId !== '' && String(item.id) === requestedMaterialId)
+      || youtubeId(video?.url) === requestedYoutubeId
       || (requestedVideoTitle !== '' && item.titulo.trim().toLocaleLowerCase() === requestedVideoTitle)
   })
   if (!material) {
