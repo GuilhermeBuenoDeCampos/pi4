@@ -10,6 +10,7 @@
     "db:seed": "tsx src/database/seed.ts"
   },
   "dependencies": {
+    "@google/genai": "^3.0.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^18.0.9",
@@ -17,7 +18,6 @@
     "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.11.5",
     "nodemailer": "^10.2.1",
-    "openai": "^7.55.0",
     "sequelize": "^6.37.5"
   },
   "devDependencies": {

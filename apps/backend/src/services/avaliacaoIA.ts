@@ -1,7 +1,9 @@
+import { GoogleGenAI } from '@google/genai'
 
 const MAX_TRANSCRIPT_LENGTH = 100_000
-const ollamaUrl = process.env.OLLAMA_URL ?? 'http://localhost:11434/api/chat'
-const ollamaModel = process.env.OLLAMA_MODEL ?? 'llama3.1:8b'
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+})
 
 type Evaluation = {
   pontuacao: number
@@ -24,86 +26,68 @@ export async function avaliarConhecimento(
   if (transcricaoAula.length > MAX_TRANSCRIPT_LENGTH || transcricaoColaborador.length > MAX_TRANSCRIPT_LENGTH) {
     throw new Error('As transcrições excedem o limite permitido.')
   }
-  const response = await fetch(ollamaUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: ollamaModel,
-      stream: false,
-      format: 'json',
-      messages: [
-        {
-          role: 'system',
-          content: `
-            Você é um avaliador de treinamentos.
 
-            Compare as duas transcrições.
-            Avalie o conhecimento demonstrado.
-            Identifique acertos, omissões e erros.
-            Reconheça sinônimos e explicações equivalentes.
-            Não exija palavras idênticas.
-            Não invente informações que não estejam nas transcrições.
-            Retorne somente JSON válido, sem markdown, com:
-            pontuacao (número de 0 a 100), resumo (string), etapas (array),
-            pontos_melhoria (array de strings) e feedback (string).
+  let response
+  try {
+    response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-lite',
+      contents: `
+        Você é um avaliador de treinamentos corporativos.
 
-            Cada item de etapas deve conter etapa, status e justificativa.
-            status deve ser um destes valores:
-            compreendido, parcial, nao_mencionado ou incorreto.
-          `,
-        },
-        {
-          role: 'user',
-          content: `
-      TRANSCRIÇÃO DA AULA:
+        Compare as duas transcrições.
 
-      ${transcricaoAula}
+        Identifique:
+        - Etapas compreendidas.
+        - Etapas parcialmente compreendidas.
+        - Etapas não mencionadas.
+        - Informações incorretas.
+        - Pontos que precisam ser reforçados.
 
-      TRANSCRIÇÃO DO COLABORADOR:
+        Reconheça sinônimos e equivalências de significado.
+        Não exija palavras idênticas.
+        Não invente informações.
 
-      ${transcricaoColaborador}
+        AULA:
+        ${transcricaoAula}
 
-      Compare os dois conteúdos e avalie
-      o conhecimento demonstrado.
-          `,
-        },
-      ],
-    }),
-  })
+        RESPOSTA DO COLABORADOR:
+        ${transcricaoColaborador}
 
-  if (!response.ok) {
-    const errorBody = await response.text()
-    let detail = ''
-    try {
-      const parsed = JSON.parse(errorBody) as { error?: unknown }
-      if (typeof parsed.error === 'string') detail = `: ${parsed.error}`
-    } catch {
-      if (errorBody.trim()) detail = `: ${errorBody.trim()}`
-    }
-    if (response.status === 404) {
-      throw new Error(`Modelo do Ollama não encontrado (${ollamaModel}). Execute "ollama pull ${ollamaModel}" e tente novamente${detail}.`)
-    }
-    throw new Error(`Erro ao consultar o Ollama (${response.status})${detail}.`)
+        Retorne um JSON contendo:
+        pontuacao, resumo, etapas,
+        pontos_melhoria e feedback.
+
+        A pontuacao deve ser um número de 0 a 100.
+        Cada item de etapas deve conter etapa, status e justificativa.
+        status deve ser um destes valores:
+        compreendido, parcial, nao_mencionado ou incorreto.
+      `,
+      config: {
+        responseMimeType: 'application/json',
+      },
+    })
+  } catch (error) {
+    const detail = error instanceof Error ? `: ${error.message}` : ''
+    throw new Error(`Erro ao consultar o Gemini${detail}`)
   }
 
-  const data = await response.json() as { message?: { content?: unknown } }
-  const content = data.message?.content
+  const content = response.text
   if (typeof content !== 'string' || !content.trim()) {
-    throw new Error('O Ollama não retornou uma avaliação.')
+    throw new Error('O Gemini não retornou uma avaliação.')
   }
 
   let result: Evaluation
   try {
     result = JSON.parse(content) as Evaluation
   } catch {
-    throw new Error('O Ollama retornou uma avaliação em formato inválido.')
+    throw new Error('O Gemini retornou uma avaliação em formato inválido.')
   }
 
   if (typeof result.pontuacao !== 'number' || result.pontuacao < 0 || result.pontuacao > 100) {
-    throw new Error('O Ollama retornou uma pontuação inválida.')
+    throw new Error('O Gemini retornou uma pontuação inválida.')
   }
   if (!result.resumo || !Array.isArray(result.etapas) || !Array.isArray(result.pontos_melhoria) || !result.feedback) {
-    throw new Error('O Ollama retornou uma avaliação incompleta.')
+    throw new Error('O Gemini retornou uma avaliação incompleta.')
   }
   return result
 }
