@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { AvaliacaoPratica, AvaliacaoQuiz, Cargo, EmpresaUsuario, Usuario } from '../models/index.js'
+import { Atribuicao, AvaliacaoPratica, AvaliacaoQuiz, Cargo, EmpresaUsuario, Trilha, Usuario } from '../models/index.js'
 import { requireAuth, requireCompany, requireRole } from '../auth/middleware.js'
 import { asyncHandler } from '../utils/async-handler.js'
 
@@ -157,6 +157,48 @@ router.get('/mine', requireAuth, requireCompany, asyncHandler(async (request, re
     order: [['criadoEm', 'DESC'], ['id', 'DESC']],
   })
   response.json(assessments.map(serializeAssessment))
+}))
+
+router.get('/collaborators/:usuarioId/trainings', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR']), asyncHandler(async (request, response) => {
+  const usuarioId = String(request.params.usuarioId ?? '').trim()
+  if (!/^\d+$/.test(usuarioId)) {
+    response.status(400).json({ message: 'Colaborador inválido.' })
+    return
+  }
+
+  const empresaId = BigInt(request.auth!.empresaId!)
+  const vinculo = await EmpresaUsuario.findOne({
+    where: { empresaId, usuarioId: BigInt(usuarioId), status: ['ATIVO', 'CONVIDADO'] },
+  })
+  if (!vinculo) {
+    response.status(404).json({ message: 'Colaborador não encontrado nesta empresa.' })
+    return
+  }
+
+  const atribuicoes = await Atribuicao.findAll({
+    where: {
+      empresaId,
+      empresaUsuarioId: vinculo.id,
+      status: ['PENDENTE', 'EM_ANDAMENTO', 'CONCLUIDA'],
+    },
+    include: [{
+      model: Trilha,
+      as: 'trilha',
+      attributes: ['id', 'titulo'],
+      where: { ativa: true },
+    }],
+    order: [['dataInicio', 'DESC'], ['id', 'DESC']],
+  })
+
+  const seen = new Set<string>()
+  const trainings = atribuicoes.flatMap(atribuicao => {
+    const training = atribuicao.get('trilha') as Trilha | null
+    if (!training || seen.has(String(training.id))) return []
+    seen.add(String(training.id))
+    return [{ id: String(training.id), title: training.titulo }]
+  })
+
+  response.json(trainings)
 }))
 
 router.get('/collaborators', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR']), asyncHandler(async (request, response) => {

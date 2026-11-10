@@ -162,7 +162,6 @@ function buildActivityOptions(collaborator: CollaboratorAssessment, trainings: T
     options.set(key, { id, title })
   }
   trainings.forEach(training => add(training.id, training.title))
-  checklistTemplates.forEach(template => add(template.id, template.title))
   collaborator.avaliacoes.forEach(attempt => add(attempt.courseId, attempt.courseTitle))
   collaborator.praticas.forEach(practical => add(practical.courseId, practical.courseTitle))
   return [...options.values()]
@@ -243,7 +242,6 @@ function initials(name: string) {
 
 export function CollaboratorAssessmentsPage({ notify }: { notify: (message: string) => void }) {
   const [collaborators, setCollaborators] = useState<CollaboratorAssessment[]>([])
-  const [trainings, setTrainings] = useState<TrainingOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
@@ -251,6 +249,8 @@ export function CollaboratorAssessmentsPage({ notify }: { notify: (message: stri
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [expandedPracticalId, setExpandedPracticalId] = useState<string | null>(null)
   const [practicalTarget, setPracticalTarget] = useState<CollaboratorAssessment | null>(null)
+  const [practicalTrainings, setPracticalTrainings] = useState<TrainingOption[]>([])
+  const [loadingPracticalTrainings, setLoadingPracticalTrainings] = useState(false)
   const [practicalSource, setPracticalSource] = useState<PracticalAssessment | null>(null)
   const [practicalReevaluation, setPracticalReevaluation] = useState(false)
   const [practicalCourseId, setPracticalCourseId] = useState<string | null>(null)
@@ -277,9 +277,6 @@ export function CollaboratorAssessmentsPage({ notify }: { notify: (message: stri
 
   useEffect(() => {
     load()
-    api.get<TrainingOption[]>('/api/trainings')
-      .then(data => setTrainings(data))
-      .catch(() => setTrainings([]))
   }, [])
 
   const evaluated = collaborators.filter(collaborator => collaborator.totalAvaliacoes > 0 || collaborator.totalPraticas > 0)
@@ -309,28 +306,38 @@ export function CollaboratorAssessmentsPage({ notify }: { notify: (message: stri
   const practicalScore = applicableItems.length ? Math.round((conformingItems.length / applicableItems.length) * 100) : 0
   const practicalPassed = applicableItems.length > 0 && practicalScore >= 70
   const revaluationDelta = practicalSource ? practicalScore - practicalSource.score : null
-  const activityOptions = practicalTarget ? buildActivityOptions(practicalTarget, trainings) : []
+  const activityOptions = practicalTarget ? buildActivityOptions(practicalTarget, practicalTrainings) : []
 
-  function openPractical(collaborator: CollaboratorAssessment, source: PracticalAssessment | null = null, reevaluation = source !== null) {
-    const options = buildActivityOptions(collaborator, trainings)
-    const latest = latestEvaluation(collaborator)
-    const preferred = source
-      ? options.find(option => normalizeText(option.title) === normalizeText(source.courseTitle))
-      : latest
-        ? options.find(option => normalizeText(option.title) === normalizeText(latest.courseTitle))
-        : undefined
-    const option = preferred ?? options[0]
-    setPracticalTarget(collaborator)
-    setPracticalSource(source)
-    setPracticalReevaluation(reevaluation || source !== null)
-    setPracticalCourseId(source?.courseId ?? option?.id ?? null)
-    setPracticalTitle(source?.courseTitle ?? option?.title ?? '')
-    setPracticalItems(source
-      ? createReevaluationItems(source)
-      : createDraftItems(checklistFor(option?.id ?? null, option?.title ?? '')))
-    setPracticalObservations('')
-    setPracticalError('')
-    setSavingPractical(false)
+  async function openPractical(collaborator: CollaboratorAssessment, source: PracticalAssessment | null = null, reevaluation = source !== null) {
+    setLoadingPracticalTrainings(true)
+    try {
+      const assignedTrainings = await api.get<TrainingOption[]>(`/api/assessments/collaborators/${collaborator.usuarioId}/trainings`)
+      const options = buildActivityOptions(collaborator, assignedTrainings)
+      const latest = latestEvaluation(collaborator)
+      const preferred = source
+        ? options.find(option => normalizeText(option.title) === normalizeText(source.courseTitle))
+        : latest
+          ? options.find(option => normalizeText(option.title) === normalizeText(latest.courseTitle))
+          : undefined
+      const option = preferred ?? options[0]
+      setPracticalTrainings(assignedTrainings)
+      setPracticalTarget(collaborator)
+      setPracticalSource(source)
+      setPracticalReevaluation(reevaluation || source !== null)
+      setPracticalCourseId(source?.courseId ?? option?.id ?? null)
+      setPracticalTitle(source?.courseTitle ?? option?.title ?? '')
+      setPracticalItems(source
+        ? createReevaluationItems(source)
+        : createDraftItems(checklistFor(option?.id ?? null, option?.title ?? '')))
+      setPracticalObservations('')
+      setPracticalError(options.length === 0 ? 'Este colaborador não possui treinamentos atribuídos para avaliação.' : '')
+      setSavingPractical(false)
+    } catch (loadError) {
+      const message = loadError instanceof ApiError ? loadError.message : 'Não foi possível carregar os treinamentos deste colaborador.'
+      notify(message)
+    } finally {
+      setLoadingPracticalTrainings(false)
+    }
   }
 
   function openReevaluation(collaborator: CollaboratorAssessment) {
@@ -349,7 +356,7 @@ export function CollaboratorAssessmentsPage({ notify }: { notify: (message: stri
 
   function changePracticalActivity(title: string) {
     if (!practicalTarget) return
-    const option = buildActivityOptions(practicalTarget, trainings).find(item => item.title === title)
+    const option = buildActivityOptions(practicalTarget, practicalTrainings).find(item => item.title === title)
     const source = findLatestPractical(practicalTarget, option?.id ?? null, title)
     setPracticalSource(source)
     setPracticalReevaluation(current => current || source !== null)
@@ -507,8 +514,8 @@ export function CollaboratorAssessmentsPage({ notify }: { notify: (message: stri
                   <div className="team-assessment-actions">
                     <button className="small-button ghost" type="button" onClick={() => setExpandedId(expanded ? null : collaborator.id)} disabled={!hasEvaluations}>{expanded ? 'Ocultar' : 'Ver detalhes'}</button>
                     {latestNeedsReevaluation
-                      ? <button className="small-button" type="button" onClick={() => openReevaluation(collaborator)}>Reavaliar</button>
-                      : <button className="small-button" type="button" onClick={() => openPractical(collaborator)}>Avaliar prática</button>}
+                      ? <button className="small-button" type="button" onClick={() => openReevaluation(collaborator)} disabled={loadingPracticalTrainings}>Reavaliar</button>
+                      : <button className="small-button" type="button" onClick={() => openPractical(collaborator)} disabled={loadingPracticalTrainings}>Avaliar prática</button>}
                   </div>
                 </div>
                 {expanded && <div className="team-assessment-detail">
@@ -549,7 +556,7 @@ export function CollaboratorAssessmentsPage({ notify }: { notify: (message: stri
                             <span className={practical.passed ? 'status aprovado' : 'status reprovado'}>{practical.passed ? 'Aprovado' : 'Reprovado'}</span>
                             <div className="practical-history-actions">
                               <button className="small-button ghost" type="button" onClick={() => setExpandedPracticalId(expandedPracticalId === practical.id ? null : practical.id)}>{expandedPracticalId === practical.id ? 'Ocultar checklist' : 'Ver checklist'}</button>
-                              {!practical.passed && <button className="small-button" type="button" onClick={() => openPractical(collaborator, practical, true)}>Reavaliar</button>}
+                              {!practical.passed && <button className="small-button" type="button" onClick={() => openPractical(collaborator, practical, true)} disabled={loadingPracticalTrainings}>Reavaliar</button>}
                             </div>
                           </div>
                         {expandedPracticalId === practical.id && <div className="practical-history-body">
@@ -613,8 +620,10 @@ export function CollaboratorAssessmentsPage({ notify }: { notify: (message: stri
 
           <label className="field">
             <span>Atividade avaliada</span>
-            <select className="input" value={practicalTitle} onChange={event => changePracticalActivity(event.target.value)} disabled={savingPractical}>
-              {activityOptions.map(option => <option key={`${option.id ?? 'custom'}-${option.title}`} value={option.title}>{option.title}</option>)}
+            <select className="input" value={practicalTitle} onChange={event => changePracticalActivity(event.target.value)} disabled={savingPractical || activityOptions.length === 0}>
+              {activityOptions.length === 0
+                ? <option value="">Nenhum treinamento atribuído</option>
+                : activityOptions.map(option => <option key={`${option.id ?? 'custom'}-${option.title}`} value={option.title}>{option.title}</option>)}
             </select>
           </label>
 
