@@ -1,7 +1,11 @@
 import { GoogleGenAI } from '@google/genai'
 
 const MAX_TRANSCRIPT_LENGTH = 100_000
-const MAX_GEMINI_ATTEMPTS = 3
+const MAX_GEMINI_ATTEMPTS = 2
+const geminiModels = [
+  process.env.GEMINI_MODEL ?? 'gemini-3.5-flash-lite',
+  process.env.GEMINI_FALLBACK_MODEL ?? 'gemini-3-flash-preview',
+]
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 })
@@ -23,6 +27,11 @@ function isTemporaryGeminiError(error: unknown): boolean {
       && (candidate.message.includes('"code":503') || candidate.message.includes('"status":"UNAVAILABLE"')))
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return String(error)
+}
+
 export async function avaliarConhecimento(
   transcricaoAula: string,
   transcricaoColaborador: string,
@@ -37,9 +46,7 @@ export async function avaliarConhecimento(
     throw new Error('As transcrições excedem o limite permitido.')
   }
 
-  const request = {
-    model: 'gemini-3.5-flash-lite',
-    contents: `
+  const contents = `
         Você é um avaliador de treinamentos corporativos.
 
         Compare as duas transcrições.
@@ -69,29 +76,40 @@ export async function avaliarConhecimento(
         Cada item de etapas deve conter etapa, status e justificativa.
         status deve ser um destes valores:
         compreendido, parcial, nao_mencionado ou incorreto.
-      `,
-    config: {
-      responseMimeType: 'application/json',
-    },
-  }
-
+      `
   let response
-  for (let attempt = 1; attempt <= MAX_GEMINI_ATTEMPTS; attempt += 1) {
-    try {
-      response = await ai.models.generateContent(request)
-      break
-    } catch (error) {
-      if (!isTemporaryGeminiError(error) || attempt === MAX_GEMINI_ATTEMPTS) {
-        const detail = error instanceof Error ? `: ${error.message}` : ''
-        throw new Error(`Erro ao consultar o Gemini${detail}`)
-      }
+  let lastTemporaryError: unknown
 
-      await new Promise((resolve) => setTimeout(resolve, 1_000 * 2 ** (attempt - 1)))
+  for (const model of geminiModels) {
+    const request = {
+      model,
+      contents,
+      config: {
+        responseMimeType: 'application/json',
+      },
     }
+
+    for (let attempt = 1; attempt <= MAX_GEMINI_ATTEMPTS; attempt += 1) {
+      try {
+        response = await ai.models.generateContent(request)
+        break
+      } catch (error) {
+        if (!isTemporaryGeminiError(error)) {
+          throw new Error(`Erro ao consultar o Gemini (${model}): ${getErrorMessage(error)}`)
+        }
+        lastTemporaryError = error
+        if (attempt < MAX_GEMINI_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, 1_500 * attempt))
+        }
+      }
+    }
+
+    if (response) break
   }
 
   if (!response) {
-    throw new Error('O Gemini não retornou uma resposta.')
+    const detail = lastTemporaryError ? `: ${getErrorMessage(lastTemporaryError)}` : ''
+    throw new Error(`Os modelos do Gemini estão temporariamente indisponíveis. Tente novamente em alguns instantes${detail}`)
   }
 
   const content = response.text
