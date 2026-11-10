@@ -1,6 +1,7 @@
 import { Router } from 'express'
+import { Op } from 'sequelize'
 import { sequelize } from '../database/sequelize.js'
-import { Material, Trilha, TrilhaMaterial, Video } from '../models/index.js'
+import { Atribuicao, Avaliacao, EmpresaUsuario, Material, Progresso, Trilha, TrilhaMaterial, Video } from '../models/index.js'
 import { requireAuth, requireCompany, requireRole } from '../auth/middleware.js'
 import { asyncHandler } from '../utils/async-handler.js'
 import { avaliarConhecimento } from '../services/avaliacaoIA.js'
@@ -43,6 +44,39 @@ async function loadTrainingMaterials(trilhaId: bigint, empresaId: bigint) {
   return links
     .map(link => link.get('material') as Material | null)
     .filter((material): material is Material => material !== null)
+}
+
+async function saveLessonProgress(trilhaId: bigint, materialId: bigint, empresaId: bigint, usuarioId: bigint, status: 'EM_ANDAMENTO' | 'CONCLUIDO') {
+  const link = await TrilhaMaterial.findOne({ where: { trilhaId, materialId, empresaId } })
+  if (!link) return
+
+  const membership = await EmpresaUsuario.findOne({ where: { empresaId, usuarioId, status: 'ATIVO' } })
+  if (!membership) return
+
+  const assignment = await Atribuicao.findOne({
+    where: { empresaId, empresaUsuarioId: membership.id, trilhaId, status: { [Op.in]: ['PENDENTE', 'EM_ANDAMENTO', 'CONCLUIDA'] } },
+  })
+  if (!assignment) return
+
+  const [progress] = await Progresso.findOrCreate({
+    where: { atribuicaoId: assignment.id, trilhaMaterialId: link.id },
+    defaults: {
+      empresaId,
+      atribuicaoId: assignment.id,
+      trilhaMaterialId: link.id,
+      status,
+      percentual: status === 'CONCLUIDO' ? 100 : 1,
+      concluidoEm: status === 'CONCLUIDO' ? new Date() : null,
+    },
+  })
+  if (progress.status !== 'CONCLUIDO' || status === 'CONCLUIDO') {
+    await progress.update({
+      status,
+      percentual: status === 'CONCLUIDO' ? 100 : Math.max(progress.percentual, 1),
+      concluidoEm: status === 'CONCLUIDO' ? new Date() : progress.concluidoEm,
+    })
+  }
+  if (assignment.status === 'PENDENTE') await assignment.update({ status: 'EM_ANDAMENTO' })
 }
 
 function serializeTraining(training: Trilha) {
@@ -207,7 +241,35 @@ router.post('/:id/evaluate', requireAuth, requireCompany, asyncHandler(async (re
   }
 
   const evaluation = await avaliarConhecimento(video.transcricao, collaboratorTranscript)
+  const empresaId = BigInt(request.auth!.empresaId!)
+  const usuarioId = BigInt(request.auth!.sub)
+  const assignmentMembership = await EmpresaUsuario.findOne({ where: { empresaId, usuarioId, status: 'ATIVO' } })
+  const assignment = assignmentMembership
+    ? await Atribuicao.findOne({ where: { empresaId, empresaUsuarioId: assignmentMembership.id, trilhaId: BigInt(id), status: { [Op.in]: ['PENDENTE', 'EM_ANDAMENTO', 'CONCLUIDA'] } } })
+    : null
+  await Avaliacao.create({
+    empresaId,
+    atribuicaoId: assignment?.id ?? null,
+    usuarioId,
+    trilhaId: BigInt(id),
+    materialId: BigInt(material.id),
+    pontuacao: evaluation.pontuacao,
+    transcricao: collaboratorTranscript,
+    resultado: evaluation,
+  })
+  await saveLessonProgress(BigInt(id), BigInt(material.id), empresaId, usuarioId, 'CONCLUIDO')
   response.json({ evaluation })
+}))
+
+router.post('/:id/progress', requireAuth, requireCompany, asyncHandler(async (request, response) => {
+  const id = typeof request.params.id === 'string' ? request.params.id : ''
+  const materialId = String(request.body?.materialId ?? '').trim()
+  if (!/^\d+$/.test(id) || !/^\d+$/.test(materialId)) {
+    response.status(400).json({ message: 'Treinamento ou aula inválidos.' })
+    return
+  }
+  await saveLessonProgress(BigInt(id), BigInt(materialId), BigInt(request.auth!.empresaId!), BigInt(request.auth!.sub), 'CONCLUIDO')
+  response.json({ message: 'Progresso da aula salvo.', completed: true })
 }))
 
 router.put('/:id', requireAuth, requireCompany, requireRole([...creatorRoles]), asyncHandler(async (request, response) => {

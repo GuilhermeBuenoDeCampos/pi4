@@ -1,4 +1,5 @@
 import { Atribuicao } from './Atribuicao.js'
+import { Avaliacao } from './Avaliacao.js'
 import { Cargo } from './Cargo.js'
 import { Empresa } from './Empresa.js'
 import { EmpresaUsuario } from './EmpresaUsuario.js'
@@ -48,5 +49,5 @@ TokenSenha.belongsTo(Usuario, { foreignKey: 'usuarioId', as: 'usuario' })
 
 export {
   Atribuicao, Cargo, Empresa, EmpresaUsuario, FichaTecnica, HistoricoVisualizacao, Material,
-  Pop, Progresso, TokenSenha, Trilha, TrilhaMaterial, Usuario, Video,
+  Avaliacao, Pop, Progresso, TokenSenha, Trilha, TrilhaMaterial, Usuario, Video,
 }

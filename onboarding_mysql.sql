@@ -203,6 +203,20 @@ CREATE TABLE IF NOT EXISTS progresso (
 
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS avaliacao (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  empresa_id BIGINT UNSIGNED NOT NULL,
+  atribuicao_id BIGINT UNSIGNED NULL,
+  usuario_id BIGINT UNSIGNED NOT NULL,
+  trilha_id BIGINT UNSIGNED NOT NULL,
+  material_id BIGINT UNSIGNED NOT NULL,
+  pontuacao DECIMAL(5,2) NOT NULL,
+  transcricao LONGTEXT NOT NULL,
+  resultado JSON NOT NULL,
+  criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_avaliacao_usuario (usuario_id, empresa_id, criado_em)
+) ENGINE=InnoDB;
+
 -- Regras de negócio para validar na aplicação ou via triggers:
 -- 1. video/pop/ficha_tecnica deve corresponder a material.tipo e ocorrer em apenas uma subtabela.
 -- 2. progresso.trilha_material_id deve pertencer à mesma trilha que atribuicao.trilha_id.

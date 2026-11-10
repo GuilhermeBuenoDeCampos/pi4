@@ -78,6 +78,21 @@ try {
     }
   }
   await connection.query(`
+    CREATE TABLE IF NOT EXISTS avaliacao (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      empresa_id BIGINT UNSIGNED NOT NULL,
+      atribuicao_id BIGINT UNSIGNED NULL,
+      usuario_id BIGINT UNSIGNED NOT NULL,
+      trilha_id BIGINT UNSIGNED NOT NULL,
+      material_id BIGINT UNSIGNED NOT NULL,
+      pontuacao DECIMAL(5,2) NOT NULL,
+      transcricao LONGTEXT NOT NULL,
+      resultado JSON NOT NULL,
+      criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_avaliacao_usuario (usuario_id, empresa_id, criado_em)
+    )
+  `)
+  await connection.query(`
     CREATE TABLE IF NOT EXISTS historico_visualizacao (
       id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
       usuario_id BIGINT UNSIGNED NOT NULL,

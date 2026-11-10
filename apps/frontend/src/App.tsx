@@ -592,7 +592,18 @@ function CourseDetail({ course, go, notify, canEdit, onUpdate, onBack }: { cours
             <a className="small-button ghost" href={`https://www.youtube.com/watch?v=${currentVideo.youtubeId}`} target="_blank" rel="noreferrer">Abrir no YouTube</a>
           </div>
           <div className="course-video-actions">
-            <button className="secondary" onClick={() => notify(`Aula "${currentVideo.title}" marcada como concluída`)}>Marcar como concluída</button>
+            <button className="secondary" onClick={async () => {
+              if (!currentVideo.materialId) {
+                notify('Aula ainda não está vinculada ao banco de dados.')
+                return
+              }
+              try {
+                await api.post(`/api/trainings/${course.id}/progress`, { materialId: currentVideo.materialId })
+                notify(`Aula "${currentVideo.title}" marcada como concluída`)
+              } catch (error) {
+                notify(error instanceof ApiError ? error.message : 'Não foi possível salvar o progresso.')
+              }
+            }}>Marcar como concluída</button>
           </div>
           <KnowledgeRecorder key={`${currentVideo.youtubeId}-${activeVideo}`} trainingId={course.id} video={{ ...currentVideo, videoIndex: activeVideo }} />
         </section>
