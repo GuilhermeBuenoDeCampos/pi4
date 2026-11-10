@@ -20,6 +20,13 @@ function getVideo(material: Material) {
 }
 
 function parseQuiz(value: unknown) {
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value) as unknown
+    } catch {
+      return null
+    }
+  }
   if (!Array.isArray(value) || value.length === 0) return null
   const questions = value.map(raw => {
     if (!raw || typeof raw !== 'object') return null

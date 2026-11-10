@@ -1049,7 +1049,7 @@ function CourseDetail({ course, go, notify, canEdit, onProgress, onUpdate, onBac
             }}>Marcar como concluída</button>
           </div>
           <KnowledgeRecorder key={`${currentVideo.youtubeId}-${activeVideo}`} trainingId={course.id} video={{ ...currentVideo, videoIndex: activeVideo }} onCompleted={onProgress} />
-          <KnowledgeQuiz key={course.id} course={course} />
+          <KnowledgeQuiz key={`${course.id}-${course.quiz?.length ?? 0}`} course={course} />
         </section>
         <section className="panel course-lessons">
           <div className="section-heading"><div><p className="eyebrow">Conteúdo do curso</p><h3>Aulas em vídeo</h3></div></div>
