@@ -79,14 +79,36 @@ async function saveLessonProgress(trilhaId: bigint, materialId: bigint, empresaI
   if (assignment.status === 'PENDENTE') await assignment.update({ status: 'EM_ANDAMENTO' })
 }
 
-function serializeTraining(training: Trilha) {
+async function getTrainingProgress(trilhaId: bigint, empresaId: bigint, usuarioId: bigint, totalLessons: number) {
+  if (!totalLessons) return { progress: 0, status: 'Pendente' }
+
+  const membership = await EmpresaUsuario.findOne({ where: { empresaId, usuarioId, status: 'ATIVO' } })
+  if (!membership) return { progress: 0, status: 'Pendente' }
+
+  const assignment = await Atribuicao.findOne({
+    where: { empresaId, empresaUsuarioId: membership.id, trilhaId, status: { [Op.in]: ['PENDENTE', 'EM_ANDAMENTO', 'CONCLUIDA'] } },
+  })
+  if (!assignment) return { progress: 0, status: 'Pendente' }
+
+  const completedLessons = await Progresso.count({
+    where: { empresaId, atribuicaoId: assignment.id, status: 'CONCLUIDO' },
+  })
+  const progress = Math.min(100, Math.round((completedLessons / totalLessons) * 100))
+  return {
+    progress,
+    status: progress >= 100 ? 'Concluído' : progress > 0 ? 'Em andamento' : 'Pendente',
+  }
+}
+
+async function serializeTraining(training: Trilha, empresaId: bigint, usuarioId: bigint) {
   const materials = orderedMaterials(training)
+  const trainingProgress = await getTrainingProgress(BigInt(training.id), empresaId, usuarioId, materials.length)
   return {
     id: String(training.id),
     title: training.titulo,
     area: training.area ?? '',
-    progress: 0,
-    status: 'Pendente',
+    progress: trainingProgress.progress,
+    status: trainingProgress.status,
     description: training.descricao ?? '',
     instructor: training.instrutor ?? '',
     duration: training.duracao ?? '',
@@ -120,7 +142,9 @@ router.get('/', requireAuth, requireCompany, asyncHandler(async (request, respon
     }],
     order: [['criadoEm', 'DESC']],
   })
-  response.json(trainings.map(serializeTraining))
+  const empresaId = BigInt(request.auth!.empresaId!)
+  const usuarioId = BigInt(request.auth!.sub)
+  response.json(await Promise.all(trainings.map(training => serializeTraining(training, empresaId, usuarioId))))
 }))
 
 router.post('/', requireAuth, requireCompany, requireRole([...creatorRoles]), asyncHandler(async (request, response) => {
@@ -190,7 +214,7 @@ router.post('/', requireAuth, requireCompany, requireRole([...creatorRoles]), as
       through: { attributes: ['ordem'] },
     }],
   })
-  response.status(201).json({ training: saved ? serializeTraining(saved) : null })
+  response.status(201).json({ training: saved ? await serializeTraining(saved, empresaId, BigInt(request.auth!.sub)) : null })
 }))
 
 router.post('/:id/evaluate', requireAuth, requireCompany, asyncHandler(async (request, response) => {
@@ -325,7 +349,7 @@ router.put('/:id', requireAuth, requireCompany, requireRole([...creatorRoles]), 
     where: { id: BigInt(id), empresaId },
     include: [{ model: Material, as: 'materiais', required: false, include: [{ model: Video, as: 'video', required: false }], through: { attributes: ['ordem'] } }],
   })
-  response.json({ training: saved ? serializeTraining(saved) : null })
+  response.json({ training: saved ? await serializeTraining(saved, empresaId, BigInt(request.auth!.sub)) : null })
 }))
 
 function parseDuration(value: unknown) {

@@ -173,6 +173,10 @@ function PlatformApp({ initialPage = 'landing' }: { initialPage?: Page }) {
     setCourseId(id)
     setPage('course')
   }
+  const refreshCourses = async () => {
+    const data = await api.get<Course[]>('/api/trainings')
+    setCourses(data)
+  }
   const go = (next: Page) => {
     if (!user && next !== 'landing') {
       navigate('/login')
@@ -197,7 +201,7 @@ function PlatformApp({ initialPage = 'landing' }: { initialPage?: Page }) {
         {page !== 'dashboard' && page !== 'landing' && <Topbar title={pageTitle(page, selectedCourse?.title)} />}
         {page === 'dashboard' && <Dashboard go={go} openCourse={openCourse} courses={courses} />}
         {page === 'trainings' && <Trainings go={go} notify={notify} openCourse={openCourse} courses={courses} setCourses={setCourses} canCreate={canEditTrainings} canEdit={canEditTrainings} />}
-        {page === 'course' && selectedCourse && <CourseDetail course={selectedCourse} go={go} notify={notify} canEdit={canEditTrainings} onUpdate={async updated => { const saved = await saveTraining(updated); setCourses(current => current.map(item => item.id === saved.id ? saved : item)); notify('Treinamento atualizado com sucesso.') }} onBack={() => setPage('trainings')} />}
+        {page === 'course' && selectedCourse && <CourseDetail course={selectedCourse} go={go} notify={notify} canEdit={canEditTrainings} onProgress={refreshCourses} onUpdate={async updated => { const saved = await saveTraining(updated); setCourses(current => current.map(item => item.id === saved.id ? saved : item)); notify('Treinamento atualizado com sucesso.') }} onBack={() => setPage('trainings')} />}
         {page === 'progress' && <Progress />}
         {page === 'assessments' && <Assessments notify={notify} />}
         {page === 'certificates' && <Certificates notify={notify} />}
@@ -413,7 +417,7 @@ function CourseEditor({ course, onSave, onCancel }: { course: Course; onSave: (c
   </form>
 }
 
-function KnowledgeRecorder({ trainingId, video }: { trainingId: string; video: CourseVideo }) {
+function KnowledgeRecorder({ trainingId, video, onCompleted }: { trainingId: string; video: CourseVideo; onCompleted: () => Promise<void> }) {
   const [isRecording, setIsRecording] = useState(false)
   const [transcript, setTranscript] = useState('')
   const [interimTranscript, setInterimTranscript] = useState('')
@@ -525,6 +529,7 @@ function KnowledgeRecorder({ trainingId, video }: { trainingId: string; video: C
       try {
         const response = await api.post<{ evaluation: TrainingEvaluation }>(`/api/trainings/${trainingId}/evaluate`, { materialId: video.materialId, videoIndex: video.videoIndex, youtubeId: video.youtubeId, videoTitle: video.title, transcript })
         setEvaluation(response.evaluation)
+        await onCompleted()
       } catch (evaluationError) {
         setError(evaluationError instanceof ApiError ? evaluationError.message : 'Não foi possível avaliar sua resposta.')
       } finally {
@@ -555,7 +560,7 @@ function EvaluationResult({ evaluation }: { evaluation: TrainingEvaluation }) {
   </div>
 }
 
-function CourseDetail({ course, go, notify, canEdit, onUpdate, onBack }: { course: Course; go: (page: Page) => void; notify: (message: string) => void; canEdit: boolean; onUpdate: (course: Course) => Promise<void>; onBack: () => void }) {
+function CourseDetail({ course, go, notify, canEdit, onProgress, onUpdate, onBack }: { course: Course; go: (page: Page) => void; notify: (message: string) => void; canEdit: boolean; onProgress: () => Promise<void>; onUpdate: (course: Course) => Promise<void>; onBack: () => void }) {
   const [activeVideo, setActiveVideo] = useState(0)
   const currentVideo = course.videos[activeVideo]
   return <>
@@ -599,13 +604,14 @@ function CourseDetail({ course, go, notify, canEdit, onUpdate, onBack }: { cours
               }
               try {
                 await api.post(`/api/trainings/${course.id}/progress`, { materialId: currentVideo.materialId })
+                await onProgress()
                 notify(`Aula "${currentVideo.title}" marcada como concluída`)
               } catch (error) {
                 notify(error instanceof ApiError ? error.message : 'Não foi possível salvar o progresso.')
               }
             }}>Marcar como concluída</button>
           </div>
-          <KnowledgeRecorder key={`${currentVideo.youtubeId}-${activeVideo}`} trainingId={course.id} video={{ ...currentVideo, videoIndex: activeVideo }} />
+          <KnowledgeRecorder key={`${currentVideo.youtubeId}-${activeVideo}`} trainingId={course.id} video={{ ...currentVideo, videoIndex: activeVideo }} onCompleted={onProgress} />
         </section>
         <section className="panel course-lessons">
           <div className="section-heading"><div><p className="eyebrow">Conteúdo do curso</p><h3>Aulas em vídeo</h3></div></div>
