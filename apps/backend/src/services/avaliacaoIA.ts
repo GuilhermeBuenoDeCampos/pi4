@@ -193,21 +193,41 @@ export async function gerarPop(transcricao: string): Promise<PopDraft> {
   const content = response.text
   if (typeof content !== 'string' || !content.trim()) throw new Error('O Gemini não retornou um POP.')
 
-  let draft: Partial<PopDraft>
+  let draft: Partial<PopDraft> & { etapas?: unknown; passos?: unknown; conteudo?: unknown; resumo?: unknown }
   try {
     draft = JSON.parse(content) as Partial<PopDraft>
   } catch {
     throw new Error('O Gemini retornou o POP em formato inválido.')
   }
-  const fields = ['titulo', 'codigo', 'categoria', 'descricao', 'procedimento'] as const
-  if (fields.some(field => typeof draft[field] !== 'string' || !draft[field]?.trim())) {
-    throw new Error('O Gemini retornou um POP incompleto.')
+  const procedureSource = draft.procedimento ?? draft.conteudo
+  const steps = draft.etapas ?? draft.passos
+  const procedure = typeof procedureSource === 'string'
+    ? procedureSource.trim()
+    : Array.isArray(steps)
+      ? steps.map((step: unknown, index: number) => {
+        const text = typeof step === 'string'
+          ? step
+          : step && typeof step === 'object'
+            ? String((step as { descricao?: unknown; etapa?: unknown; passo?: unknown }).descricao
+              ?? (step as { etapa?: unknown }).etapa
+              ?? (step as { passo?: unknown }).passo
+              ?? '').trim()
+          : ''
+        return text ? `${index + 1}. ${text}` : ''
+      }).filter(Boolean).join('\n')
+      : ''
+  const titulo = String(draft.titulo ?? '').trim() || 'Procedimento Operacional Padrão'
+  const codigo = String(draft.codigo ?? '').trim() || `POP-${Date.now().toString().slice(-6)}`
+  const categoria = String(draft.categoria ?? '').trim() || 'Procedimento operacional'
+  const descricao = String(draft.descricao ?? draft.resumo ?? '').trim() || 'Procedimento gerado a partir de uma transcrição.'
+  if (!procedure) {
+    throw new Error('O Gemini retornou um POP sem etapas ou procedimento.')
   }
   return {
-    titulo: draft.titulo!.trim().slice(0, 200),
-    codigo: draft.codigo!.trim().slice(0, 60),
-    categoria: draft.categoria!.trim().slice(0, 100),
-    descricao: draft.descricao!.trim(),
-    procedimento: draft.procedimento!.trim(),
+    titulo: titulo.slice(0, 200),
+    codigo: codigo.slice(0, 60),
+    categoria: categoria.slice(0, 100),
+    descricao: descricao.slice(0, 2000),
+    procedimento: procedure.slice(0, MAX_TRANSCRIPT_LENGTH),
   }
 }
