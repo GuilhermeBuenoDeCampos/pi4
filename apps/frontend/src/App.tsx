@@ -1301,7 +1301,60 @@ function MaterialsPage({ type, title, eyebrow, description, notify, canManage }:
 function MaterialForm({ type, initialMaterial, onCreated, onError, onCancel }: { type: 'POP' | 'FICHA_TECNICA'; initialMaterial?: Material; onCreated: (material: Material) => void; onError: (message: string) => void; onCancel?: () => void }) {
   const [form, setForm] = useState({ titulo: initialMaterial?.titulo ?? '', codigo: initialMaterial?.codigo ?? '', categoria: initialMaterial?.categoria ?? '', rendimento: initialMaterial?.rendimento ?? '', descricao: initialMaterial?.descricao ?? '', conteudo: initialMaterial?.conteudo ?? '', ingredientes: initialMaterial?.ingredientes ?? '', montagemPorcionamento: initialMaterial?.montagemPorcionamento ?? '', conservacao: initialMaterial?.conservacao ?? '', urlDocumento: initialMaterial?.urlDocumento ?? '' })
   const [saving, setSaving] = useState(false)
+  const [recording, setRecording] = useState(false)
+  const [transcript, setTranscript] = useState('')
+  const [generating, setGenerating] = useState(false)
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
   const update = (key: keyof typeof form, value: string) => setForm(current => ({ ...current, [key]: value }))
+  function toggleTranscript() {
+    if (recording) {
+      recognitionRef.current?.stop()
+      setRecording(false)
+      return
+    }
+    const SpeechRecognition = (window as Window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor }).SpeechRecognition
+      ?? (window as Window & { webkitSpeechRecognition?: SpeechRecognitionConstructor }).webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      onError('A transcrição em tempo real não é compatível com este navegador. Use o Google Chrome ou Edge.')
+      return
+    }
+    const recognition = new SpeechRecognition()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = 'pt-BR'
+    recognition.onresult = event => {
+      let finalText = ''
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        if (event.results[index].isFinal) finalText += event.results[index][0].transcript
+      }
+      if (finalText.trim()) setTranscript(current => `${current}${current ? ' ' : ''}${finalText.trim()}`)
+    }
+    recognition.onerror = () => {
+      setRecording(false)
+      onError('Não foi possível transcrever o áudio. Verifique a permissão do microfone.')
+    }
+    recognition.onend = () => setRecording(false)
+    recognitionRef.current = recognition
+    setTranscript('')
+    recognition.start()
+    setRecording(true)
+  }
+  async function generatePop() {
+    if (!transcript.trim()) {
+      onError('Grave ou informe uma transcrição antes de criar o POP.')
+      return
+    }
+    setGenerating(true)
+    try {
+      const response = await api.post<{ pop: { titulo: string; codigo: string; categoria: string; descricao: string; procedimento: string } }>('/api/materials/generate-pop', { transcricao: transcript })
+      setForm(current => ({ ...current, titulo: response.pop.titulo, codigo: response.pop.codigo, categoria: response.pop.categoria, descricao: response.pop.descricao, conteudo: response.pop.procedimento }))
+      onError('')
+    } catch (error) {
+      onError(error instanceof ApiError ? error.message : 'Não foi possível criar o POP com a IA.')
+    } finally {
+      setGenerating(false)
+    }
+  }
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!form.titulo.trim() || !form.codigo.trim() || !form.categoria.trim() || !form.conteudo.trim()) {
@@ -1318,7 +1371,7 @@ function MaterialForm({ type, initialMaterial, onCreated, onError, onCancel }: {
       onError(error instanceof ApiError ? error.message : 'Não foi possível criar o material.')
     } finally { setSaving(false) }
   }
-  return <form className="panel material-form" onSubmit={submit}><div className="section-heading"><div><p className="eyebrow">Área administrativa</p><h3>{initialMaterial ? 'Editar' : 'Novo'} {type === 'POP' ? 'POP' : 'ficha técnica'}</h3></div></div><div className="material-form-grid"><label className="field"><span>Título</span><input className="input" value={form.titulo} onChange={event => update('titulo', event.target.value)} /></label><label className="field"><span>Código</span><input className="input" value={form.codigo} onChange={event => update('codigo', event.target.value)} /></label><label className="field"><span>Categoria</span><input className="input" value={form.categoria} onChange={event => update('categoria', event.target.value)} placeholder={type === 'POP' ? 'Ex.: Higienização' : 'Ex.: Salgados'} /></label>{type === 'FICHA_TECNICA' && <label className="field"><span>Rendimento</span><input className="input" value={form.rendimento} onChange={event => update('rendimento', event.target.value)} placeholder="Ex.: 25 unidades" /></label>}<label className="field field-wide"><span>Descrição</span><input className="input" value={form.descricao} onChange={event => update('descricao', event.target.value)} /></label><label className="field field-wide"><span>{type === 'POP' ? 'Procedimento' : 'Especificações'}</span><textarea className="input material-textarea" value={form.conteudo} onChange={event => update('conteudo', event.target.value)} rows={5} /></label>{type === 'FICHA_TECNICA' && <><label className="field field-wide"><span>Ingredientes</span><textarea className="input material-textarea" value={form.ingredientes} onChange={event => update('ingredientes', event.target.value)} rows={4} placeholder="Um ingrediente por linha" /></label><label className="field"><span>Montagem e porcionamento</span><textarea className="input material-textarea" value={form.montagemPorcionamento} onChange={event => update('montagemPorcionamento', event.target.value)} rows={4} /></label><label className="field"><span>Conservação</span><textarea className="input material-textarea" value={form.conservacao} onChange={event => update('conservacao', event.target.value)} rows={4} /></label></>}<label className="field field-wide"><span>Link do documento <small>(opcional)</small></span><input className="input" type="url" value={form.urlDocumento} onChange={event => update('urlDocumento', event.target.value)} placeholder="https://..." /></label></div><div className="form-actions">{onCancel && <button className="secondary" type="button" onClick={onCancel}>Cancelar</button>}<button className="form-submit" type="submit" disabled={saving}>{saving ? 'Salvando...' : initialMaterial ? 'Salvar alterações' : 'Salvar material'} <span>→</span></button></div></form>
+  return <form className="panel material-form" onSubmit={submit}><div className="section-heading"><div><p className="eyebrow">Área administrativa</p><h3>{initialMaterial ? 'Editar' : 'Novo'} {type === 'POP' ? 'POP' : 'ficha técnica'}</h3></div></div>{type === 'POP' && <section className="pop-ai-capture"><div className="section-heading"><div><p className="eyebrow">Assistente de IA</p><h3>Crie um POP por áudio</h3><p>Grave o procedimento; a transcrição será usada para preencher um rascunho revisável.</p></div><button className={recording ? 'record-button recording' : 'record-button'} type="button" onClick={toggleTranscript}><span className="record-button-icon">{recording ? '■' : '●'}</span>{recording ? 'Parar transcrição' : 'Captar áudio'}</button></div><textarea className="input material-textarea" value={transcript} onChange={event => setTranscript(event.target.value)} rows={4} placeholder="A transcrição do áudio aparecerá aqui. Você também pode colar ou editar o texto." /><div className="form-actions"><button className="secondary" type="button" onClick={generatePop} disabled={generating || recording || !transcript.trim()}>{generating ? 'Criando POP com IA...' : 'Criar POP através da transcrição'}</button></div></section>}<div className="material-form-grid"><label className="field"><span>Título</span><input className="input" value={form.titulo} onChange={event => update('titulo', event.target.value)} /></label><label className="field"><span>Código</span><input className="input" value={form.codigo} onChange={event => update('codigo', event.target.value)} /></label><label className="field"><span>Categoria</span><input className="input" value={form.categoria} onChange={event => update('categoria', event.target.value)} placeholder={type === 'POP' ? 'Ex.: Higienização' : 'Ex.: Salgados'} /></label>{type === 'FICHA_TECNICA' && <label className="field"><span>Rendimento</span><input className="input" value={form.rendimento} onChange={event => update('rendimento', event.target.value)} placeholder="Ex.: 25 unidades" /></label>}<label className="field field-wide"><span>Descrição</span><input className="input" value={form.descricao} onChange={event => update('descricao', event.target.value)} /></label><label className="field field-wide"><span>{type === 'POP' ? 'Procedimento' : 'Especificações'}</span><textarea className="input material-textarea" value={form.conteudo} onChange={event => update('conteudo', event.target.value)} rows={5} /></label>{type === 'FICHA_TECNICA' && <><label className="field field-wide"><span>Ingredientes</span><textarea className="input material-textarea" value={form.ingredientes} onChange={event => update('ingredientes', event.target.value)} rows={4} placeholder="Um ingrediente por linha" /></label><label className="field"><span>Montagem e porcionamento</span><textarea className="input material-textarea" value={form.montagemPorcionamento} onChange={event => update('montagemPorcionamento', event.target.value)} rows={4} /></label><label className="field"><span>Conservação</span><textarea className="input material-textarea" value={form.conservacao} onChange={event => update('conservacao', event.target.value)} rows={4} /></label></>}<label className="field field-wide"><span>Link do documento <small>(opcional)</small></span><input className="input" type="url" value={form.urlDocumento} onChange={event => update('urlDocumento', event.target.value)} placeholder="https://..." /></label></div><div className="form-actions">{onCancel && <button className="secondary" type="button" onClick={onCancel}>Cancelar</button>}<button className="form-submit" type="submit" disabled={saving}>{saving ? 'Salvando...' : initialMaterial ? 'Salvar alterações' : 'Salvar material'} <span>→</span></button></div></form>
 }
 
 function MaterialCard({ material, type, onOpen }: { material: Material; type: 'POP' | 'FICHA_TECNICA'; onOpen: (material: Material) => void }) {

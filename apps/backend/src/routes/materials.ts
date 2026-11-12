@@ -2,8 +2,19 @@ import { Router } from 'express'
 import { FichaTecnica, Material, Pop } from '../models/index.js'
 import { requireAuth, requireCompany, requireRole } from '../auth/middleware.js'
 import { asyncHandler } from '../utils/async-handler.js'
+import { gerarPop } from '../services/avaliacaoIA.js'
 
 const router = Router()
+
+router.post('/generate-pop', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR']), asyncHandler(async (request, response) => {
+  const transcript = String(request.body?.transcricao ?? '').trim()
+  if (!transcript) {
+    response.status(400).json({ message: 'Informe uma transcrição para criar o POP.' })
+    return
+  }
+  const pop = await gerarPop(transcript)
+  response.json({ pop })
+}))
 
 router.get('/', requireAuth, requireCompany, asyncHandler(async (request, response) => {
   const materiais = await Material.findAll({

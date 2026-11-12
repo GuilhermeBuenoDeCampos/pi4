@@ -18,6 +18,14 @@ type Evaluation = {
   feedback: string
 }
 
+export type PopDraft = {
+  titulo: string
+  codigo: string
+  categoria: string
+  descricao: string
+  procedimento: string
+}
+
 function isTemporaryGeminiError(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false
 
@@ -131,4 +139,75 @@ export async function avaliarConhecimento(
     throw new Error('O Gemini retornou uma avaliação incompleta.')
   }
   return result
+}
+
+export async function gerarPop(transcricao: string): Promise<PopDraft> {
+  if (typeof transcricao !== 'string' || !transcricao.trim()) {
+    throw new Error('A transcrição para criar o POP é obrigatória.')
+  }
+  if (transcricao.length > MAX_TRANSCRIPT_LENGTH) {
+    throw new Error('A transcrição excede o limite permitido.')
+  }
+
+  const contents = `
+    Você é um especialista em documentação de procedimentos operacionais padrão (POP).
+    Transforme a transcrição abaixo em um POP claro, objetivo e seguro.
+    Não invente informações que não estejam na transcrição. Quando um dado não estiver disponível,
+    use um valor genérico seguro no título, código ou categoria.
+    Organize o procedimento em etapas numeradas, mantendo alertas e critérios de segurança.
+    Retorne somente JSON válido com:
+    titulo, codigo, categoria, descricao e procedimento.
+    titulo deve ter no máximo 200 caracteres; codigo no máximo 60; categoria no máximo 100;
+    descricao deve ser um resumo curto; procedimento deve conter as etapas completas.
+
+    TRANSCRIÇÃO:
+    ${transcricao}
+  `
+
+  let response
+  let lastTemporaryError: unknown
+  for (const model of geminiModels) {
+    for (let attempt = 1; attempt <= MAX_GEMINI_ATTEMPTS; attempt += 1) {
+      try {
+        response = await ai.models.generateContent({
+          model,
+          contents,
+          config: { responseMimeType: 'application/json' },
+        })
+        break
+      } catch (error) {
+        if (!isTemporaryGeminiError(error)) {
+          throw new Error(`Erro ao consultar o Gemini (${model}): ${getErrorMessage(error)}`)
+        }
+        lastTemporaryError = error
+        if (attempt < MAX_GEMINI_ATTEMPTS) await new Promise(resolve => setTimeout(resolve, 1_500 * attempt))
+      }
+    }
+    if (response) break
+  }
+
+  if (!response) {
+    const detail = lastTemporaryError ? `: ${getErrorMessage(lastTemporaryError)}` : ''
+    throw new Error(`Os modelos do Gemini estão temporariamente indisponíveis. Tente novamente em alguns instantes${detail}`)
+  }
+  const content = response.text
+  if (typeof content !== 'string' || !content.trim()) throw new Error('O Gemini não retornou um POP.')
+
+  let draft: Partial<PopDraft>
+  try {
+    draft = JSON.parse(content) as Partial<PopDraft>
+  } catch {
+    throw new Error('O Gemini retornou o POP em formato inválido.')
+  }
+  const fields = ['titulo', 'codigo', 'categoria', 'descricao', 'procedimento'] as const
+  if (fields.some(field => typeof draft[field] !== 'string' || !draft[field]?.trim())) {
+    throw new Error('O Gemini retornou um POP incompleto.')
+  }
+  return {
+    titulo: draft.titulo!.trim().slice(0, 200),
+    codigo: draft.codigo!.trim().slice(0, 60),
+    categoria: draft.categoria!.trim().slice(0, 100),
+    descricao: draft.descricao!.trim(),
+    procedimento: draft.procedimento!.trim(),
+  }
 }
