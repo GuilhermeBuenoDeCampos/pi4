@@ -155,7 +155,7 @@ export async function gerarPop(transcricao: string): Promise<PopDraft> {
     Não invente informações que não estejam na transcrição. Quando um dado não estiver disponível,
     use um valor genérico seguro no título, código ou categoria.
     Organize o procedimento em etapas numeradas, mantendo alertas e critérios de segurança.
-    Retorne somente JSON válido com:
+    Retorne somente JSON válido com exatamente estes campos:
     titulo, codigo, categoria, descricao e procedimento.
     titulo deve ter no máximo 200 caracteres; codigo no máximo 60; categoria no máximo 100;
     descricao deve ser um resumo curto; procedimento deve conter as etapas completas.
@@ -193,29 +193,45 @@ export async function gerarPop(transcricao: string): Promise<PopDraft> {
   const content = response.text
   if (typeof content !== 'string' || !content.trim()) throw new Error('O Gemini não retornou um POP.')
 
-  let draft: Partial<PopDraft> & { etapas?: unknown; passos?: unknown; conteudo?: unknown; resumo?: unknown }
+  let draft: Partial<PopDraft> & {
+    etapas?: unknown
+    passos?: unknown
+    steps?: unknown
+    instrucoes?: unknown
+    passos_procedimento?: unknown
+    conteudo?: unknown
+    resumo?: unknown
+  }
   try {
-    draft = JSON.parse(content) as Partial<PopDraft>
+    const normalizedContent = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+    draft = JSON.parse(normalizedContent) as Partial<PopDraft>
   } catch {
     throw new Error('O Gemini retornou o POP em formato inválido.')
   }
-  const procedureSource = draft.procedimento ?? draft.conteudo
-  const steps = draft.etapas ?? draft.passos
-  const procedure = typeof procedureSource === 'string'
-    ? procedureSource.trim()
-    : Array.isArray(steps)
-      ? steps.map((step: unknown, index: number) => {
-        const text = typeof step === 'string'
-          ? step
-          : step && typeof step === 'object'
-            ? String((step as { descricao?: unknown; etapa?: unknown; passo?: unknown }).descricao
-              ?? (step as { etapa?: unknown }).etapa
-              ?? (step as { passo?: unknown }).passo
-              ?? '').trim()
-          : ''
+  const procedureKeys = ['procedimento', 'conteudo', 'instrucoes', 'passos_procedimento', 'etapas', 'passos', 'steps']
+  function extractProcedure(value: unknown, depth = 0): string {
+    if (depth > 3 || value === null || value === undefined) return ''
+    if (typeof value === 'string') return value.trim()
+    if (Array.isArray(value)) {
+      return value.map((step, index) => {
+        const text = extractProcedure(step, depth + 1)
         return text ? `${index + 1}. ${text}` : ''
       }).filter(Boolean).join('\n')
-      : ''
+    }
+    if (typeof value === 'object') {
+      const object = value as Record<string, unknown>
+      for (const key of procedureKeys) {
+        const text = extractProcedure(object[key], depth + 1)
+        if (text) return text
+      }
+      for (const key of ['data', 'resultado', 'pop', 'documento']) {
+        const text = extractProcedure(object[key], depth + 1)
+        if (text) return text
+      }
+    }
+    return ''
+  }
+  const procedure = extractProcedure(draft)
   const titulo = String(draft.titulo ?? '').trim() || 'Procedimento Operacional Padrão'
   const codigo = String(draft.codigo ?? '').trim() || `POP-${Date.now().toString().slice(-6)}`
   const categoria = String(draft.categoria ?? '').trim() || 'Procedimento operacional'
