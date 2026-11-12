@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { FichaTecnica, Material, Pop } from '../models/index.js'
 import { requireAuth, requireCompany, requireRole } from '../auth/middleware.js'
 import { asyncHandler } from '../utils/async-handler.js'
-import { gerarPop } from '../services/avaliacaoIA.js'
+import { gerarMip, gerarPop } from '../services/avaliacaoIA.js'
 
 const router = Router()
 
@@ -14,6 +14,16 @@ router.post('/generate-pop', requireAuth, requireCompany, requireRole(['ADMIN', 
   }
   const pop = await gerarPop(transcript)
   response.json({ pop })
+}))
+
+router.post('/generate-mip', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR']), asyncHandler(async (request, response) => {
+  const transcript = String(request.body?.transcricao ?? '').trim()
+  if (!transcript) {
+    response.status(400).json({ message: 'Informe uma transcrição para criar o MIP.' })
+    return
+  }
+  const mip = await gerarMip(transcript)
+  response.json({ mip })
 }))
 
 router.get('/', requireAuth, requireCompany, asyncHandler(async (request, response) => {

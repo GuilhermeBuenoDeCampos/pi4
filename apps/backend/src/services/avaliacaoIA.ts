@@ -141,17 +141,17 @@ export async function avaliarConhecimento(
   return result
 }
 
-export async function gerarPop(transcricao: string): Promise<PopDraft> {
+async function gerarDocumento(transcricao: string, tipo: 'POP' | 'MIP'): Promise<PopDraft> {
   if (typeof transcricao !== 'string' || !transcricao.trim()) {
-    throw new Error('A transcrição para criar o POP é obrigatória.')
+    throw new Error(`A transcrição para criar o ${tipo} é obrigatória.`)
   }
   if (transcricao.length > MAX_TRANSCRIPT_LENGTH) {
     throw new Error('A transcrição excede o limite permitido.')
   }
 
   const contents = `
-    Você é um especialista em documentação de procedimentos operacionais padrão (POP).
-    Transforme a transcrição abaixo em um POP claro, objetivo e seguro.
+    Você é um especialista em documentação corporativa.
+    Transforme a transcrição abaixo em um ${tipo === 'MIP' ? 'Manual Interno de Procedimento (MIP)' : 'Procedimento Operacional Padrão (POP)'} claro, objetivo e seguro.
     Não invente informações que não estejam na transcrição. Quando um dado não estiver disponível,
     use um valor genérico seguro no título, código ou categoria.
     Organize o procedimento em etapas numeradas, mantendo alertas e critérios de segurança.
@@ -191,7 +191,7 @@ export async function gerarPop(transcricao: string): Promise<PopDraft> {
     throw new Error(`Os modelos do Gemini estão temporariamente indisponíveis. Tente novamente em alguns instantes${detail}`)
   }
   const content = response.text
-  if (typeof content !== 'string' || !content.trim()) throw new Error('O Gemini não retornou um POP.')
+  if (typeof content !== 'string' || !content.trim()) throw new Error(`O Gemini não retornou um ${tipo}.`)
 
   let draft: Partial<PopDraft> & {
     etapas?: unknown
@@ -206,7 +206,7 @@ export async function gerarPop(transcricao: string): Promise<PopDraft> {
     const normalizedContent = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
     draft = JSON.parse(normalizedContent) as Partial<PopDraft>
   } catch {
-    throw new Error('O Gemini retornou o POP em formato inválido.')
+    throw new Error(`O Gemini retornou o ${tipo} em formato inválido.`)
   }
   const procedureKeys = ['procedimento', 'conteudo', 'instrucoes', 'passos_procedimento', 'etapas', 'passos', 'steps']
   function extractProcedure(value: unknown, depth = 0): string {
@@ -232,12 +232,12 @@ export async function gerarPop(transcricao: string): Promise<PopDraft> {
     return ''
   }
   const procedure = extractProcedure(draft)
-  const titulo = String(draft.titulo ?? '').trim() || 'Procedimento Operacional Padrão'
-  const codigo = String(draft.codigo ?? '').trim() || `POP-${Date.now().toString().slice(-6)}`
-  const categoria = String(draft.categoria ?? '').trim() || 'Procedimento operacional'
-  const descricao = String(draft.descricao ?? draft.resumo ?? '').trim() || 'Procedimento gerado a partir de uma transcrição.'
+  const titulo = String(draft.titulo ?? '').trim() || (tipo === 'MIP' ? 'Manual Interno de Procedimento' : 'Procedimento Operacional Padrão')
+  const codigo = String(draft.codigo ?? '').trim() || `${tipo}-${Date.now().toString().slice(-6)}`
+  const categoria = String(draft.categoria ?? '').trim() || (tipo === 'MIP' ? 'Manual interno' : 'Procedimento operacional')
+  const descricao = String(draft.descricao ?? draft.resumo ?? '').trim() || `Documento ${tipo} gerado a partir de uma transcrição.`
   if (!procedure) {
-    throw new Error('O Gemini retornou um POP sem etapas ou procedimento.')
+    throw new Error(`O Gemini retornou um ${tipo} sem etapas ou procedimento.`)
   }
   return {
     titulo: titulo.slice(0, 200),
@@ -246,4 +246,12 @@ export async function gerarPop(transcricao: string): Promise<PopDraft> {
     descricao: descricao.slice(0, 2000),
     procedimento: procedure.slice(0, MAX_TRANSCRIPT_LENGTH),
   }
+}
+
+export function gerarPop(transcricao: string): Promise<PopDraft> {
+  return gerarDocumento(transcricao, 'POP')
+}
+
+export function gerarMip(transcricao: string): Promise<PopDraft> {
+  return gerarDocumento(transcricao, 'MIP')
 }
