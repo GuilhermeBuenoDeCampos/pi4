@@ -61,7 +61,7 @@ router.post('/', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR']), 
   const tipo = String(request.body?.tipo ?? '').toUpperCase()
   const empresaId = BigInt(request.auth!.empresaId!)
 
-  if (!titulo || !codigo || !categoria || !conteudo || !['POP', 'FICHA_TECNICA'].includes(tipo)) {
+  if (!titulo || !codigo || !categoria || !conteudo || !['POP', 'MIP', 'FICHA_TECNICA'].includes(tipo)) {
     response.status(400).json({ message: 'Informe título, código, categoria, conteúdo e um tipo válido.' })
     return
   }
@@ -74,12 +74,12 @@ router.post('/', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR']), 
     empresaId,
     titulo,
     descricao: descricao || null,
-    tipo: tipo as 'POP' | 'FICHA_TECNICA',
+    tipo: tipo as 'POP' | 'MIP' | 'FICHA_TECNICA',
     versao: 1,
     ativo: true,
   })
 
-  if (tipo === 'POP') {
+  if (tipo === 'POP' || tipo === 'MIP') {
     await Pop.create({ materialId: material.id, codigo, categoria, procedimento: conteudo, urlDocumento: urlDocumento || null })
   } else {
     await FichaTecnica.create({
@@ -96,7 +96,7 @@ router.post('/', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR']), 
   }
 
   response.status(201).json({
-    message: `${tipo === 'POP' ? 'POP' : 'Ficha técnica'} criado com sucesso.`,
+    message: `${tipo === 'POP' ? 'POP' : tipo === 'MIP' ? 'MIP' : 'Ficha técnica'} criado com sucesso.`,
     material: {
       id: String(material.id),
       titulo,
@@ -153,7 +153,7 @@ router.put('/:id', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR'])
   }
 
   await material.update({ titulo, descricao: descricao || null, versao: material.versao + 1 })
-  if (material.tipo === 'POP') {
+  if (material.tipo === 'POP' || material.tipo === 'MIP') {
     const pop = material.get('pop') as Pop | null
     if (!pop) {
       response.status(500).json({ message: 'O POP deste material não foi encontrado.' })
@@ -179,7 +179,7 @@ router.put('/:id', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR'])
   }
 
   response.json({
-    message: `${material.tipo === 'POP' ? 'POP' : 'Ficha técnica'} atualizado com sucesso.`,
+    message: `${material.tipo === 'POP' ? 'POP' : material.tipo === 'MIP' ? 'MIP' : 'Ficha técnica'} atualizado com sucesso.`,
     material: {
       id: String(material.id), titulo, descricao: descricao || null, tipo: material.tipo,
       versao: material.versao, codigo, categoria,

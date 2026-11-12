@@ -55,6 +55,7 @@ try {
   if (Number(popCategory[0]?.total ?? 0) === 0) {
     await connection.query("ALTER TABLE pop ADD COLUMN categoria VARCHAR(100) NOT NULL DEFAULT 'Geral' AFTER codigo")
   }
+  await connection.query("ALTER TABLE material MODIFY COLUMN tipo ENUM('VIDEO','POP','MIP','FICHA_TECNICA') NOT NULL")
   const trilhaColumns = [
     ['area', 'VARCHAR(120) NULL'],
     ['instrutor', 'VARCHAR(200) NULL'],

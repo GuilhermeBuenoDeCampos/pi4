@@ -47,7 +47,7 @@ router.post('/views/:materialId', requireAuth, requireCompany, asyncHandler(asyn
     where: { id: BigInt(materialId), empresaId: BigInt(request.auth!.empresaId!), ativo: true },
     attributes: ['id', 'versao', 'tipo'],
   })
-  if (!material || !['POP', 'FICHA_TECNICA'].includes(material.tipo)) {
+  if (!material || !['POP', 'MIP', 'FICHA_TECNICA'].includes(material.tipo)) {
     response.status(404).json({ message: 'Material não encontrado.' })
     return
   }

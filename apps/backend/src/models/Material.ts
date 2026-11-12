@@ -1,7 +1,7 @@
 import { CreationOptional, DataTypes, InferAttributes, InferCreationAttributes, Model } from 'sequelize'
 import { sequelize } from '../database/sequelize.js'
 
-export type TipoMaterial = 'VIDEO' | 'POP' | 'FICHA_TECNICA'
+export type TipoMaterial = 'VIDEO' | 'POP' | 'MIP' | 'FICHA_TECNICA'
 
 export class Material extends Model<InferAttributes<Material>, InferCreationAttributes<Material>> {
   declare id: CreationOptional<bigint>
@@ -20,7 +20,7 @@ Material.init({
   empresaId: { type: DataTypes.BIGINT.UNSIGNED, allowNull: false, field: 'empresa_id' },
   titulo: { type: DataTypes.STRING(200), allowNull: false },
   descricao: { type: DataTypes.TEXT, allowNull: true },
-  tipo: { type: DataTypes.ENUM('VIDEO', 'POP', 'FICHA_TECNICA'), allowNull: false },
+  tipo: { type: DataTypes.ENUM('VIDEO', 'POP', 'MIP', 'FICHA_TECNICA'), allowNull: false },
   versao: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 1, validate: { min: 1 } },
   ativo: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   criadoEm: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: 'criado_em' },
