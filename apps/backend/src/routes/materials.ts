@@ -6,6 +6,21 @@ import { gerarMip, gerarPop } from '../services/avaliacaoIA.js'
 
 const router = Router()
 
+function normalizeFotos(value: unknown): { nome: string; legenda: string; dados: string }[] {
+  if (!Array.isArray(value)) return []
+  return value.slice(0, 12).flatMap(item => {
+    if (typeof item !== 'object' || item === null) return []
+    const foto = item as Record<string, unknown>
+    const dados = typeof foto.dados === 'string' ? foto.dados : ''
+    if (!dados.startsWith('data:image/') || dados.length > 4_000_000) return []
+    return [{
+      nome: String(foto.nome ?? 'Foto').trim().slice(0, 200),
+      legenda: String(foto.legenda ?? '').trim().slice(0, 500),
+      dados,
+    }]
+  })
+}
+
 router.post('/generate-pop', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR']), asyncHandler(async (request, response) => {
   const transcript = String(request.body?.transcricao ?? '').trim()
   if (!transcript) {
@@ -53,6 +68,7 @@ router.get('/', requireAuth, requireCompany, asyncHandler(async (request, respon
       montagemPorcionamento: ficha?.montagemPorcionamento ?? null,
       conservacao: ficha?.conservacao ?? null,
       urlDocumento: pop?.urlDocumento ?? ficha?.urlDocumento ?? null,
+      fotos: pop?.fotos ?? null,
     }
   }))
 }))
@@ -69,6 +85,7 @@ router.post('/', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR']), 
   const conservacao = String(request.body?.conservacao ?? '').trim()
   const urlDocumento = String(request.body?.urlDocumento ?? '').trim()
   const tipo = String(request.body?.tipo ?? '').toUpperCase()
+  const fotos = tipo === 'MIP' ? normalizeFotos(request.body?.fotos) : null
   const empresaId = BigInt(request.auth!.empresaId!)
 
   if (!titulo || !codigo || !categoria || !conteudo || !['POP', 'MIP', 'FICHA_TECNICA'].includes(tipo)) {
@@ -90,7 +107,7 @@ router.post('/', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR']), 
   })
 
   if (tipo === 'POP' || tipo === 'MIP') {
-    await Pop.create({ materialId: material.id, codigo, categoria, procedimento: conteudo, urlDocumento: urlDocumento || null })
+    await Pop.create({ materialId: material.id, codigo, categoria, procedimento: conteudo, urlDocumento: urlDocumento || null, fotos: fotos as never })
   } else {
     await FichaTecnica.create({
       materialId: material.id,
@@ -121,6 +138,7 @@ router.post('/', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR']), 
       montagemPorcionamento: tipo === 'FICHA_TECNICA' ? montagemPorcionamento || null : null,
       conservacao: tipo === 'FICHA_TECNICA' ? conservacao || null : null,
       urlDocumento: urlDocumento || null,
+      fotos,
     },
   })
 }))
@@ -153,6 +171,7 @@ router.put('/:id', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR'])
   const montagemPorcionamento = String(request.body?.montagemPorcionamento ?? '').trim()
   const conservacao = String(request.body?.conservacao ?? '').trim()
   const urlDocumento = String(request.body?.urlDocumento ?? '').trim()
+  const fotos = material.tipo === 'MIP' ? normalizeFotos(request.body?.fotos) : null
   if (!titulo || !codigo || !categoria || !conteudo) {
     response.status(400).json({ message: 'Informe título, código, categoria e conteúdo.' })
     return
@@ -169,7 +188,7 @@ router.put('/:id', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR'])
       response.status(500).json({ message: 'O POP deste material não foi encontrado.' })
       return
     }
-    await pop.update({ codigo, categoria, procedimento: conteudo, urlDocumento: urlDocumento || null })
+    await pop.update({ codigo, categoria, procedimento: conteudo, urlDocumento: urlDocumento || null, fotos: fotos as never })
   } else {
     const ficha = material.get('fichaTecnica') as FichaTecnica | null
     if (!ficha) {
@@ -199,6 +218,7 @@ router.put('/:id', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR'])
       montagemPorcionamento: material.tipo === 'FICHA_TECNICA' ? montagemPorcionamento || null : null,
       conservacao: material.tipo === 'FICHA_TECNICA' ? conservacao || null : null,
       urlDocumento: urlDocumento || null,
+      fotos,
     },
   })
 }))

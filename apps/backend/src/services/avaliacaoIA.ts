@@ -150,11 +150,24 @@ async function gerarDocumento(transcricao: string, tipo: 'POP' | 'MIP'): Promise
   }
 
   const contents = `
-    Você é um especialista em documentação corporativa.
-    Transforme a transcrição abaixo em um ${tipo === 'MIP' ? 'Manual Interno de Procedimento (MIP)' : 'Procedimento Operacional Padrão (POP)'} claro, objetivo e seguro.
-    Não invente informações que não estejam na transcrição. Quando um dado não estiver disponível,
-    use um valor genérico seguro no título, código ou categoria.
-    Organize o procedimento em etapas numeradas, mantendo alertas e critérios de segurança.
+    Você é um especialista sênior em procedimentos industriais e documentação corporativa.
+    Transforme a transcrição abaixo em um ${tipo === 'MIP' ? 'Manual Interno de Procedimento (MIP)' : 'Procedimento Operacional Padrão (POP)'} profissional, claro, operacional e seguro.
+    Não invente dados, pessoas, equipamentos, normas, materiais, parâmetros, prazos ou responsabilidades.
+    Quando uma informação não estiver na transcrição, omita-a ou use "[A definir]" em vez de presumir.
+    Preserve a terminologia técnica da transcrição e use linguagem imperativa em português brasileiro.
+    ${tipo === 'MIP' ? `
+    Estruture o MIP exatamente com estas seções:
+    1. OBJETIVO
+    2. ESCOPO
+    3. RESPONSABILIDADES
+    4. RECURSOS E MATERIAIS NECESSÁRIOS
+    5. REQUISITOS DE SEGURANÇA E QUALIDADE
+    6. PROCEDIMENTO PASSO A PASSO
+    7. CRITÉRIOS DE CONFIRMAÇÃO E FINALIZAÇÃO
+    8. REGISTROS E REFERÊNCIAS
+    9. ESPAÇOS PARA FOTOS
+    Onde houver pontos que devem ser ilustrados, inclua marcadores "[Foto 1: descrição da imagem esperada]" ou "[Foto 2: descrição da imagem esperada]" no procedimento.
+    ` : 'Organize o procedimento em etapas numeradas, mantendo alertas e critérios de segurança.'}
     Retorne somente JSON válido com exatamente estes campos:
     titulo, codigo, categoria, descricao e procedimento.
     titulo deve ter no máximo 200 caracteres; codigo no máximo 60; categoria no máximo 100;

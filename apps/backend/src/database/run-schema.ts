@@ -55,6 +55,13 @@ try {
   if (Number(popCategory[0]?.total ?? 0) === 0) {
     await connection.query("ALTER TABLE pop ADD COLUMN categoria VARCHAR(100) NOT NULL DEFAULT 'Geral' AFTER codigo")
   }
+  const [popFotos] = await connection.query(
+    `SELECT COUNT(*) AS total FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'pop' AND column_name = 'fotos'`,
+  ) as [{ total: number }[], unknown]
+  if (Number(popFotos[0]?.total ?? 0) === 0) {
+    await connection.query('ALTER TABLE pop ADD COLUMN fotos JSON NULL')
+  }
   await connection.query("ALTER TABLE material MODIFY COLUMN tipo ENUM('VIDEO','POP','MIP','FICHA_TECNICA') NOT NULL")
   const trilhaColumns = [
     ['area', 'VARCHAR(120) NULL'],

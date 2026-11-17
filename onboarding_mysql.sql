@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS pop (
   categoria VARCHAR(100) NOT NULL,
   procedimento LONGTEXT NULL,
   url_documento VARCHAR(2048) NULL,
+  fotos JSON NULL,
   CONSTRAINT fk_pop_material FOREIGN KEY (material_id) REFERENCES material(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 

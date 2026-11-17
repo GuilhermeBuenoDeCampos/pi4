@@ -7,6 +7,7 @@ export class Pop extends Model<InferAttributes<Pop>, InferCreationAttributes<Pop
   declare categoria: string
   declare procedimento: string | null
   declare urlDocumento: string | null
+  declare fotos: unknown[] | null
 }
 
 Pop.init({
@@ -15,4 +16,5 @@ Pop.init({
   categoria: { type: DataTypes.STRING(100), allowNull: false },
   procedimento: { type: DataTypes.TEXT('long'), allowNull: true },
   urlDocumento: { type: DataTypes.STRING(2048), allowNull: true, field: 'url_documento' },
+  fotos: { type: DataTypes.JSON, allowNull: true },
 }, { sequelize, tableName: 'pop', timestamps: false })
