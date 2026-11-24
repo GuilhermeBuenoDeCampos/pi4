@@ -10,6 +10,11 @@ const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 })
 
+const liveAi = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  httpOptions: { apiVersion: 'v1alpha' },
+})
+
 type Evaluation = {
   pontuacao: number
   resumo: string
@@ -156,7 +161,7 @@ async function gerarDocumento(transcricao: string, tipo: 'POP' | 'MIP'): Promise
     Quando uma informação não estiver na transcrição, omita-a ou use "[A definir]" em vez de presumir.
     Preserve a terminologia técnica da transcrição e use linguagem imperativa em português brasileiro.
     ${tipo === 'MIP' ? `
-    Estruture o MIP exatamente com estas seções:
+    Estruture o MIP exatamente com estas seções, usando um modelo corporativo profissional inspirado em manuais internos industriais:
     1. OBJETIVO
     2. ESCOPO
     3. RESPONSABILIDADES
@@ -166,7 +171,10 @@ async function gerarDocumento(transcricao: string, tipo: 'POP' | 'MIP'): Promise
     7. CRITÉRIOS DE CONFIRMAÇÃO E FINALIZAÇÃO
     8. REGISTROS E REFERÊNCIAS
     9. ESPAÇOS PARA FOTOS
-    Onde houver pontos que devem ser ilustrados, inclua marcadores "[Foto 1: descrição da imagem esperada]" ou "[Foto 2: descrição da imagem esperada]" no procedimento.
+
+    Use títulos em maiúsculas, etapas numeradas, comandos imperativos e alerta claro para riscos ou critérios de segurança.
+    Para campos não mencionados na conversa, use "[A definir]". Não invente equipamentos, normas, responsáveis, parâmetros ou prazos.
+    Onde houver pontos que devem ser ilustrados, inclua marcadores independentes no formato "[Foto 1: descrição da imagem esperada]" e "[Foto 2: descrição da imagem esperada]".
     ` : 'Organize o procedimento em etapas numeradas, mantendo alertas e critérios de segurança.'}
     Retorne somente JSON válido com exatamente estes campos:
     titulo, codigo, categoria, descricao e procedimento.
@@ -267,4 +275,27 @@ export function gerarPop(transcricao: string): Promise<PopDraft> {
 
 export function gerarMip(transcricao: string): Promise<PopDraft> {
   return gerarDocumento(transcricao, 'MIP')
+}
+
+export async function criarTokenLiveMip(): Promise<{ token: string; modelo: string }> {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY não está configurada.')
+  }
+
+  const modelo = process.env.GEMINI_LIVE_MODEL ?? 'gemini-2.5-flash-native-audio-preview-09-2025'
+  const agora = new Date()
+  const result = await liveAi.authTokens.create({
+    config: {
+      uses: 1,
+      expireTime: new Date(agora.getTime() + 30 * 60 * 1000).toISOString(),
+      newSessionExpireTime: new Date(agora.getTime() + 60 * 1000).toISOString(),
+      liveConnectConstraints: {
+        model: modelo,
+      },
+    },
+  })
+  if (!result.name) {
+    throw new Error('O Gemini não criou o token da sessão de voz.')
+  }
+  return { token: result.name, modelo }
 }

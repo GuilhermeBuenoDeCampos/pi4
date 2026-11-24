@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { FichaTecnica, Material, Pop } from '../models/index.js'
 import { requireAuth, requireCompany, requireRole } from '../auth/middleware.js'
 import { asyncHandler } from '../utils/async-handler.js'
-import { gerarMip, gerarPop } from '../services/avaliacaoIA.js'
+import { criarTokenLiveMip, gerarMip, gerarPop } from '../services/avaliacaoIA.js'
 
 const router = Router()
 
@@ -39,6 +39,11 @@ router.post('/generate-mip', requireAuth, requireCompany, requireRole(['ADMIN', 
   }
   const mip = await gerarMip(transcript)
   response.json({ mip })
+}))
+
+router.post('/live-mip-token', requireAuth, requireCompany, requireRole(['ADMIN', 'GESTOR']), asyncHandler(async (_request, response) => {
+  const session = await criarTokenLiveMip()
+  response.json(session)
 }))
 
 router.get('/', requireAuth, requireCompany, asyncHandler(async (request, response) => {

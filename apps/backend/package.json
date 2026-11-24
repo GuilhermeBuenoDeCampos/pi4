@@ -10,7 +10,7 @@
     "db:seed": "tsx src/database/seed.ts"
   },
   "dependencies": {
-    "@google/genai": "^3.0.0",
+    "@google/genai": "^3.4.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^18.0.9",

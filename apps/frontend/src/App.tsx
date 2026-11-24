@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { GoogleGenAI, Modality, type Session } from '@google/genai'
 import { createPortal } from 'react-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { navigate, Redirect, usePathname } from './router'
@@ -1314,6 +1315,18 @@ function MaterialForm({ type, initialMaterial, onCreated, onError, onCancel }: {
   const [generating, setGenerating] = useState(false)
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
   const photoInputRef = useRef<HTMLInputElement | null>(null)
+  const liveSessionRef = useRef<Session | null>(null)
+  const liveMicStreamRef = useRef<MediaStream | null>(null)
+  const liveInputContextRef = useRef<AudioContext | null>(null)
+  const liveProcessorRef = useRef<ScriptProcessorNode | null>(null)
+  const liveOutputContextRef = useRef<AudioContext | null>(null)
+  const liveOutputQueueRef = useRef<number>(0)
+  const liveTranscriptRef = useRef('')
+  const [liveConnected, setLiveConnected] = useState(false)
+  const [liveListening, setLiveListening] = useState(false)
+  const [liveThinking, setLiveThinking] = useState(false)
+  const [liveText, setLiveText] = useState('')
+  const [liveMessages, setLiveMessages] = useState<{ role: 'assistant' | 'user'; text: string }[]>([])
   const update = (key: keyof typeof form, value: string) => setForm(current => ({ ...current, [key]: value }))
   async function resizeMipPhoto(file: File): Promise<MipPhoto> {
     const data = await new Promise<string>((resolve, reject) => {
@@ -1355,6 +1368,235 @@ function MaterialForm({ type, initialMaterial, onCreated, onError, onCancel }: {
       onError(error instanceof Error ? error.message : 'Não foi possível adicionar as fotos.')
     } finally {
       event.target.value = ''
+    }
+  }
+  function float32ToBase64(values: Float32Array) {
+    const pcm = new Int16Array(values.length)
+    for (let index = 0; index < values.length; index += 1) {
+      const value = Math.max(-1, Math.min(1, values[index]))
+      pcm[index] = value < 0 ? value * 0x8000 : value * 0x7fff
+    }
+    const bytes = new Uint8Array(pcm.buffer)
+    let binary = ''
+    const chunkSize = 0x8000
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
+    }
+    return btoa(binary)
+  }
+  async function playLivePcm(base64: string) {
+    const binary = atob(base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+    const samples = new Int16Array(bytes.buffer)
+    const context = liveOutputContextRef.current ?? new AudioContext({ sampleRate: 24000 })
+    liveOutputContextRef.current = context
+    await context.resume()
+    const buffer = context.createBuffer(1, samples.length, 24000)
+    const channel = buffer.getChannelData(0)
+    for (let index = 0; index < samples.length; index += 1) {
+      channel[index] = samples[index] / (samples[index] < 0 ? 0x8000 : 0x7fff)
+    }
+    const source = context.createBufferSource()
+    source.buffer = buffer
+    source.connect(context.destination)
+    const startAt = Math.max(context.currentTime, liveOutputQueueRef.current)
+    source.start(startAt)
+    liveOutputQueueRef.current = startAt + buffer.duration
+  }
+  async function startLiveMipChat() {
+    if (liveConnected) return
+    setLiveThinking(true)
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Este navegador não permite acesso ao microfone. Use Chrome ou Edge em localhost ou em uma conexão HTTPS.')
+      }
+      if (!window.isSecureContext) {
+        throw new Error('O microfone exige HTTPS ou localhost. Abra o aplicativo usando http://localhost:5173.')
+      }
+
+      let stream: MediaStream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+          video: false,
+        })
+      } catch (error) {
+        const microphoneError = error as DOMException
+        if (microphoneError.name === 'NotAllowedError' || microphoneError.name === 'PermissionDeniedError') {
+          throw new Error('Permissão do microfone negada. Clique no ícone de cadeado na barra do navegador e permita o acesso ao microfone.')
+        }
+        if (microphoneError.name === 'NotFoundError' || microphoneError.name === 'DevicesNotFoundError') {
+          throw new Error('Nenhum microfone foi encontrado. Conecte um dispositivo e tente novamente.')
+        }
+        if (microphoneError.name === 'NotReadableError' || microphoneError.name === 'TrackStartError') {
+          throw new Error('O microfone está sendo usado por outro aplicativo ou está indisponível. Feche o aplicativo que o utiliza e tente novamente.')
+        }
+        throw new Error('Não foi possível acessar o microfone. Verifique as permissões e o dispositivo.')
+      }
+
+      liveMicStreamRef.current = stream
+      const response = await api.post<{ token: string; modelo: string }>('/api/materials/live-mip-token', {})
+      const ai = new GoogleGenAI({
+        apiKey: response.token,
+        httpOptions: { apiVersion: 'v1alpha' },
+      })
+      const session = await ai.live.connect({
+        model: response.modelo,
+        config: {
+          responseModalities: [Modality.AUDIO],
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
+          temperature: 0.4,
+          systemInstruction: `Você é um especialista em criação de MIPs (Manuais Internos de Procedimento).
+            Conduza uma entrevista curta e profissional por voz.
+            Faça uma pergunta por vez, começando pelo objetivo e pelo processo.
+            Descubra: objetivo, escopo, responsáveis, recursos, segurança, sequência operacional, critérios de qualidade e registros.
+            Não invente informações. Quando o usuário não souber, registre "[A definir]" no contexto.
+            Confirme ambiguidades e peça exemplos ou detalhes antes de finalizar.
+            Quando todas as informações essenciais estiverem claras, diga em voz alta que o MIP está pronto para ser revisado e peça ao usuário para iniciar a criação.`,
+        },
+        callbacks: {
+          onopen: () => setLiveConnected(true),
+          onmessage: message => {
+            const payload = message as unknown as {
+              serverContent?: {
+                inputTranscription?: { text?: string }
+                outputTranscription?: { text?: string }
+                modelTurn?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] }
+              }
+            }
+            const content = payload.serverContent
+            if (!content) return
+            if (content.inputTranscription?.text) {
+              const text = content.inputTranscription.text
+              liveTranscriptRef.current = `${liveTranscriptRef.current}${liveTranscriptRef.current ? ' ' : ''}${text}`
+              setLiveMessages(current => {
+                const last = current[current.length - 1]
+                return last?.role === 'user'
+                  ? [...current.slice(0, -1), { role: 'user', text: `${last.text}${text}` }]
+                  : [...current, { role: 'user', text }]
+              })
+            }
+            if (content.outputTranscription?.text) {
+              const text = content.outputTranscription.text
+              setLiveMessages(current => {
+                const last = current[current.length - 1]
+                return last?.role === 'assistant'
+                  ? [...current.slice(0, -1), { role: 'assistant', text: `${last.text}${text}` }]
+                  : [...current, { role: 'assistant', text }]
+              })
+            }
+            for (const part of content.modelTurn?.parts ?? []) {
+              if (part.inlineData?.data) void playLivePcm(part.inlineData.data)
+            }
+          },
+          onerror: event => {
+            console.error('Erro da sessão Live do Gemini:', event)
+            onError('Não foi possível manter o bate-papo por voz com o Gemini.')
+            setLiveConnected(false)
+            setLiveListening(false)
+          },
+          onclose: event => {
+            console.warn('Sessão Live encerrada:', event)
+            const reason = event?.reason ? ` Motivo: ${event.reason}.` : ''
+            if (event?.code && event.code !== 1000) {
+              onError(`A conversa por voz foi encerrada pelo servidor (código ${event.code}).${reason}`)
+            }
+            liveProcessorRef.current?.disconnect()
+            liveProcessorRef.current = null
+            liveMicStreamRef.current?.getTracks().forEach(track => track.stop())
+            liveMicStreamRef.current = null
+            void liveInputContextRef.current?.close()
+            liveInputContextRef.current = null
+            setLiveConnected(false)
+            setLiveListening(false)
+          },
+        },
+      })
+      liveSessionRef.current = session
+      session.sendClientContent({
+        turns: [{ role: 'user', parts: [{ text: 'Comece a entrevista para criar um novo MIP.' }] }],
+        turnComplete: true,
+      })
+      setLiveMessages([{ role: 'assistant', text: 'Conectando ao assistente de MIP...' }])
+      if (!stream) throw new Error('O microfone não está disponível.')
+      const context = new AudioContext({ sampleRate: 16000 })
+      liveInputContextRef.current = context
+      await context.resume()
+      const source = context.createMediaStreamSource(stream)
+      const processor = context.createScriptProcessor(4096, 1, 1)
+      liveProcessorRef.current = processor
+      processor.onaudioprocess = event => {
+        const data = float32ToBase64(event.inputBuffer.getChannelData(0))
+        session.sendRealtimeInput({ audio: { data, mimeType: 'audio/pcm;rate=16000' } })
+      }
+      source.connect(processor)
+      processor.connect(context.destination)
+      setLiveListening(true)
+    } catch (error) {
+      liveProcessorRef.current?.disconnect()
+      liveProcessorRef.current = null
+      liveMicStreamRef.current?.getTracks().forEach(track => track.stop())
+      liveMicStreamRef.current = null
+      void liveInputContextRef.current?.close()
+      liveInputContextRef.current = null
+      liveSessionRef.current?.close()
+      liveSessionRef.current = null
+      setLiveListening(false)
+      setLiveConnected(false)
+      console.error('Falha ao iniciar o bate-papo Live:', error)
+      onError(error instanceof ApiError ? error.message : error instanceof Error ? error.message : 'Não foi possível iniciar o bate-papo por voz.')
+    } finally {
+      setLiveThinking(false)
+    }
+  }
+  function stopLiveMipChat() {
+    liveProcessorRef.current?.disconnect()
+    liveProcessorRef.current = null
+    liveMicStreamRef.current?.getTracks().forEach(track => track.stop())
+    liveMicStreamRef.current = null
+    void liveInputContextRef.current?.close()
+    liveInputContextRef.current = null
+    liveSessionRef.current?.close()
+    liveSessionRef.current = null
+    setLiveListening(false)
+    setLiveConnected(false)
+  }
+  function sendLiveText() {
+    const text = liveText.trim()
+    if (!text || !liveSessionRef.current) return
+    liveTranscriptRef.current = `${liveTranscriptRef.current}${liveTranscriptRef.current ? ' ' : ''}${text}`
+    setLiveMessages(current => [...current, { role: 'user', text }])
+    liveSessionRef.current.sendClientContent({
+      turns: [{ role: 'user', parts: [{ text }] }],
+      turnComplete: true,
+    })
+    setLiveText('')
+  }
+  async function createMipFromLiveChat() {
+    const chatTranscript = liveMessages
+      .filter(message => message.text !== 'Conectando ao assistente de MIP...')
+      .map(message => `${message.role === 'assistant' ? 'ASSISTENTE' : 'USUÁRIO'}: ${message.text}`)
+      .join('\n')
+    const transcription = liveTranscriptRef.current.trim()
+    const transcript = [chatTranscript, transcription ? `TRANSCRIÇÃO DA VOZ:\n${transcription}` : '']
+      .filter(Boolean)
+      .join('\n\n')
+      .trim()
+    if (!transcript) {
+      onError('Converse com o assistente por voz ou texto antes de criar o MIP.')
+      return
+    }
+    setGenerating(true)
+    try {
+      const response = await api.post<{ mip: { titulo: string; codigo: string; categoria: string; descricao: string; procedimento: string } }>('/api/materials/generate-mip', { transcricao: transcript })
+      setForm(current => ({ ...current, titulo: response.mip.titulo, codigo: response.mip.codigo, categoria: response.mip.categoria, descricao: response.mip.descricao, conteudo: response.mip.procedimento }))
+      onError('')
+    } catch (error) {
+      onError(error instanceof ApiError ? error.message : 'Não foi possível criar o MIP com o bate-papo.')
+    } finally {
+      setGenerating(false)
     }
   }
   function toggleTranscript() {
@@ -1426,7 +1668,8 @@ function MaterialForm({ type, initialMaterial, onCreated, onError, onCancel }: {
   }
   const materialName = type === 'POP' ? 'POP' : type === 'MIP' ? 'MIP' : 'ficha técnica'
   const mipPhotosSection = type === 'MIP' ? <section className="mip-photo-section field-wide"><div className="section-heading"><div><p className="eyebrow">Ilustrações do procedimento</p><h3>Fotos do MIP</h3><p>Adicione até 12 fotos e uma legenda para cada etapa ilustrada.</p></div><button className="secondary" type="button" onClick={() => photoInputRef.current?.click()}>Adicionar fotos</button></div><input ref={photoInputRef} className="mip-photo-input" type="file" accept="image/*" multiple onChange={addMipPhotos} /><div className="mip-photo-grid">{form.fotos.map((photo, index) => <div className="mip-photo-card" key={`${photo.nome}-${index}`}><img src={photo.dados} alt={photo.legenda || `Foto ${index + 1}`} /><input className="input" value={photo.legenda} onChange={event => setForm(current => ({ ...current, fotos: current.fotos.map((item, itemIndex) => itemIndex === index ? { ...item, legenda: event.target.value } : item) }))} placeholder={`Legenda da foto ${index + 1}`} /><button className="text-button" type="button" onClick={() => setForm(current => ({ ...current, fotos: current.fotos.filter((_, itemIndex) => itemIndex !== index) }))}>Remover</button></div>)}</div></section> : null
-  return <form className="panel material-form" onSubmit={submit}><div className="section-heading"><div><p className="eyebrow">Área administrativa</p><h3>{initialMaterial ? 'Editar' : 'Novo'} {materialName}</h3></div></div>{(type === 'POP' || type === 'MIP') && <section className="pop-ai-capture"><div className="section-heading"><div><p className="eyebrow">Assistente de IA</p><h3>Crie um {materialName} por áudio</h3><p>Grave o procedimento; a transcrição será usada para preencher um rascunho revisável.</p></div><button className={recording ? 'record-button recording' : 'record-button'} type="button" onClick={toggleTranscript}><span className="record-button-icon">{recording ? '■' : '●'}</span>{recording ? 'Parar transcrição' : 'Captar áudio'}</button></div><textarea className="input material-textarea" value={transcript} onChange={event => setTranscript(event.target.value)} rows={4} placeholder="A transcrição do áudio aparecerá aqui. Você também pode colar ou editar o texto." /><div className="form-actions"><button className="secondary" type="button" onClick={generateDocument} disabled={generating || recording || !transcript.trim()}>{generating ? `Criando ${materialName} com IA...` : `Criar ${materialName} através da transcrição`}</button></div></section>}{mipPhotosSection}<div className="material-form-grid"><label className="field"><span>Título</span><input className="input" value={form.titulo} onChange={event => update('titulo', event.target.value)} /></label><label className="field"><span>Código</span><input className="input" value={form.codigo} onChange={event => update('codigo', event.target.value)} /></label><label className="field"><span>Categoria</span><input className="input" value={form.categoria} onChange={event => update('categoria', event.target.value)} placeholder={type === 'POP' ? 'Ex.: Higienização' : 'Ex.: Salgados'} /></label>{type === 'FICHA_TECNICA' && <label className="field"><span>Rendimento</span><input className="input" value={form.rendimento} onChange={event => update('rendimento', event.target.value)} placeholder="Ex.: 25 unidades" /></label>}<label className="field field-wide"><span>Descrição</span><input className="input" value={form.descricao} onChange={event => update('descricao', event.target.value)} /></label><label className="field field-wide"><span>{type === 'POP' ? 'Procedimento' : type === 'MIP' ? 'Conteúdo do manual' : 'Especificações'}</span><textarea className="input material-textarea" value={form.conteudo} onChange={event => setForm(current => ({ ...current, conteudo: event.target.value }))} rows={5} /></label>{type === 'FICHA_TECNICA' && <><label className="field field-wide"><span>Ingredientes</span><textarea className="input material-textarea" value={form.ingredientes} onChange={event => update('ingredientes', event.target.value)} rows={4} placeholder="Um ingrediente por linha" /></label><label className="field"><span>Montagem e porcionamento</span><textarea className="input material-textarea" value={form.montagemPorcionamento} onChange={event => update('montagemPorcionamento', event.target.value)} rows={4} /></label><label className="field"><span>Conservação</span><textarea className="input material-textarea" value={form.conservacao} onChange={event => update('conservacao', event.target.value)} rows={4} /></label></>}<label className="field field-wide"><span>Link do documento <small>(opcional)</small></span><input className="input" type="url" value={form.urlDocumento} onChange={event => update('urlDocumento', event.target.value)} placeholder="https://..." /></label></div><div className="form-actions">{onCancel && <button className="secondary" type="button" onClick={onCancel}>Cancelar</button>}<button className="form-submit" type="submit" disabled={saving}>{saving ? 'Salvando...' : initialMaterial ? 'Salvar alterações' : 'Salvar material'} <span>→</span></button></div></form>
+  const mipLiveChatSection = type === 'MIP' ? <section className="mip-live-chat field-wide"><div className="section-heading"><div><p className="eyebrow">Assistente de voz em tempo real</p><h3>Bate-papo com a IA para criar o MIP</h3><p>A IA fará perguntas, esclarecerá informações e aprimorará o procedimento com você.</p></div>{liveConnected ? <button className="record-button recording" type="button" onClick={stopLiveMipChat}>Encerrar bate-papo</button> : <button className="record-button" type="button" onClick={startLiveMipChat} disabled={liveThinking}>{liveThinking ? 'Conectando...' : 'Iniciar conversa por voz'}</button>}</div>{liveMessages.length > 0 && <div className="mip-chat-messages">{liveMessages.map((message, index) => <div className={`mip-chat-message ${message.role}`} key={index}><strong>{message.role === 'assistant' ? 'Gemini' : 'Você'}</strong><p>{message.text}</p></div>)}</div>}<div className="mip-chat-compose"><input className="input" value={liveText} onChange={event => setLiveText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') sendLiveText() }} placeholder="Ou responda por texto..." /><button className="secondary" type="button" onClick={sendLiveText} disabled={!liveConnected || !liveText.trim()}>Enviar</button></div><div className="form-actions"><span className={liveListening ? 'live-status listening' : 'live-status'}>{liveListening ? '● Microfone conectado' : liveConnected ? 'Conversa ativa' : 'Microfone desligado'}</span><button className="secondary" type="button" onClick={createMipFromLiveChat} disabled={generating || !liveTranscriptRef.current.trim()}>{generating ? 'Criando MIP...' : 'Criar MIP com base no bate-papo'}</button></div></section> : null
+  return <form className="panel material-form" onSubmit={submit}><div className="section-heading"><div><p className="eyebrow">Área administrativa</p><h3>{initialMaterial ? 'Editar' : 'Novo'} {materialName}</h3></div></div>{(type === 'POP' || type === 'MIP') && <section className="pop-ai-capture"><div className="section-heading"><div><p className="eyebrow">Assistente de IA</p><h3>Crie um {materialName} por áudio</h3><p>Grave o procedimento; a transcrição será usada para preencher um rascunho revisável.</p></div><button className={recording ? 'record-button recording' : 'record-button'} type="button" onClick={toggleTranscript}><span className="record-button-icon">{recording ? '■' : '●'}</span>{recording ? 'Parar transcrição' : 'Captar áudio'}</button></div><textarea className="input material-textarea" value={transcript} onChange={event => setTranscript(event.target.value)} rows={4} placeholder="A transcrição do áudio aparecerá aqui. Você também pode colar ou editar o texto." /><div className="form-actions"><button className="secondary" type="button" onClick={generateDocument} disabled={generating || recording || !transcript.trim()}>{generating ? `Criando ${materialName} com IA...` : `Criar ${materialName} através da transcrição`}</button></div></section>}{mipLiveChatSection}{mipPhotosSection}<div className="material-form-grid"><label className="field"><span>Título</span><input className="input" value={form.titulo} onChange={event => update('titulo', event.target.value)} /></label><label className="field"><span>Código</span><input className="input" value={form.codigo} onChange={event => update('codigo', event.target.value)} /></label><label className="field"><span>Categoria</span><input className="input" value={form.categoria} onChange={event => update('categoria', event.target.value)} placeholder={type === 'POP' ? 'Ex.: Higienização' : 'Ex.: Salgados'} /></label>{type === 'FICHA_TECNICA' && <label className="field"><span>Rendimento</span><input className="input" value={form.rendimento} onChange={event => update('rendimento', event.target.value)} placeholder="Ex.: 25 unidades" /></label>}<label className="field field-wide"><span>Descrição</span><input className="input" value={form.descricao} onChange={event => update('descricao', event.target.value)} /></label><label className="field field-wide"><span>{type === 'POP' ? 'Procedimento' : type === 'MIP' ? 'Conteúdo do manual' : 'Especificações'}</span><textarea className="input material-textarea" value={form.conteudo} onChange={event => setForm(current => ({ ...current, conteudo: event.target.value }))} rows={5} /></label>{type === 'FICHA_TECNICA' && <><label className="field field-wide"><span>Ingredientes</span><textarea className="input material-textarea" value={form.ingredientes} onChange={event => update('ingredientes', event.target.value)} rows={4} placeholder="Um ingrediente por linha" /></label><label className="field"><span>Montagem e porcionamento</span><textarea className="input material-textarea" value={form.montagemPorcionamento} onChange={event => update('montagemPorcionamento', event.target.value)} rows={4} /></label><label className="field"><span>Conservação</span><textarea className="input material-textarea" value={form.conservacao} onChange={event => update('conservacao', event.target.value)} rows={4} /></label></>}<label className="field field-wide"><span>Link do documento <small>(opcional)</small></span><input className="input" type="url" value={form.urlDocumento} onChange={event => update('urlDocumento', event.target.value)} placeholder="https://..." /></label></div><div className="form-actions">{onCancel && <button className="secondary" type="button" onClick={onCancel}>Cancelar</button>}<button className="form-submit" type="submit" disabled={saving}>{saving ? 'Salvando...' : initialMaterial ? 'Salvar alterações' : 'Salvar material'} <span>→</span></button></div></form>
 }
 
 function MaterialCard({ material, type, onOpen }: { material: Material; type: 'POP' | 'MIP' | 'FICHA_TECNICA'; onOpen: (material: Material) => void }) {
